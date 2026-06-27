@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Model weights / checkpoints (too big for git; release separately)
+*.pt
+*.pth
+*.ckpt
+weights/
+
+# Run outputs
+eval_out/
+outputs/
+runs/
+wandb/
+*.log
+
+# Data — frames and metadata are large / not redistributable here.
+# The released benchmark ships the SPLIT FILE (splits/*.csv), not the images.
+# Root-anchored (leading /) so these never match the bioreef/data/ PACKAGE.
+/data/
+/data_oz/
+/frames/
+*.csv
+!splits/*.csv
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
