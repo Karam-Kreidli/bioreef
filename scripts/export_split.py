@@ -17,7 +17,8 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import bioreef.data.split as split_mod
-from bioreef.data.split import split_dataset, deployment_id
+from bioreef.config import BenchmarkConfig, DEFAULT_CONFIG_PATH
+from bioreef.data.split import split_from_config
 from bioreef.data.taxonomy import get_taxonomy_tree
 
 
@@ -25,8 +26,11 @@ def parse_args():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--csv", required=True)
-    p.add_argument("--min_samples", type=int, default=20)
-    p.add_argument("--split_seed", type=int, default=0)
+    p.add_argument("--config", default=DEFAULT_CONFIG_PATH,
+                   help="benchmark config YAML (inclusion rules + split params)")
+    p.add_argument("--min_samples", type=int, default=None, help="override config")
+    p.add_argument("--min_deployments", type=int, default=None, help="override config")
+    p.add_argument("--split_seed", type=int, default=None, help="override config")
     p.add_argument("--out_dir", default="splits")
     p.add_argument("--require_images", action="store_true",
                    help="only include crops whose image is on disk (default: "
@@ -41,14 +45,21 @@ def main():
     os.makedirs(args.out_dir, exist_ok=True)
     tree = get_taxonomy_tree(args.csv)
 
+    bench = BenchmarkConfig.from_yaml(args.config).apply_overrides(
+        min_samples=args.min_samples,
+        min_deployments=args.min_deployments,
+        split_seed=args.split_seed,
+    )
+    print(f"[config] {bench}")
+
     real_exists = os.path.exists
     if not args.require_images:
         # Treat every referenced image as present so the released split reflects
         # the full labelled set, not one machine's local frames.
         split_mod.os.path.exists = lambda p: True if str(p).endswith(".png") else real_exists(p)
     try:
-        train, val, test, num_classes, _c2s, _spc = split_dataset(
-            args.csv, args.img_dir, min_samples=args.min_samples, seed=args.split_seed,
+        train, val, test, num_classes, _c2s, _spc = split_from_config(
+            args.csv, args.img_dir, bench,
         )
     finally:
         split_mod.os.path.exists = real_exists
@@ -61,7 +72,7 @@ def main():
             rows.append((fn, s["deployment"], fold,
                          tax.get("family", ""), tax.get("genus", ""), s["species"]))
 
-    out_path = os.path.join(args.out_dir, f"ozfish_split_seed{args.split_seed}.csv")
+    out_path = os.path.join(args.out_dir, f"ozfish_split_seed{bench.split_seed}.csv")
     with open(out_path, "w", encoding="utf-8", newline="") as f:
         f.write("file_name,deployment,split,family,genus,species\n")
         for r in rows:

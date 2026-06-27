@@ -146,10 +146,31 @@ def _greedy_grouped_split(
     return dep_fold
 
 
+def benchmark_species(raw, min_samples: int = 20, min_deployments: int = 3):
+    """Apply the benchmark inclusion rules to raw samples and return the sorted
+    list of kept species.
+
+    A species is included iff it has >=min_samples crops AND appears in
+    >=min_deployments distinct deployments. The deployment rule guarantees every
+    kept species CAN be split across train/val/test (no unsplittable class), and
+    is the leakage-motivated addition over a plain sample-count threshold.
+    Placeholder species are already removed upstream in _load_rows.
+    """
+    sp_count = Counter(s["species"] for s in raw)
+    sp_deps = defaultdict(set)
+    for s in raw:
+        sp_deps[s["species"]].add(s["deployment"])
+    return sorted(
+        sp for sp in sp_count
+        if sp_count[sp] >= min_samples and len(sp_deps[sp]) >= min_deployments
+    )
+
+
 def split_dataset(
     csv_path: str,
     img_dir: str,
     min_samples: int = 20,
+    min_deployments: int = 3,
     ratios: Tuple[float, float, float] = (0.70, 0.15, 0.15),
     seed: int = 0,
     filter_placeholders: bool = True,
@@ -157,15 +178,16 @@ def split_dataset(
 ):
     """Build the leakage-safe deployment-grouped split.
 
+    Inclusion rules (the benchmark definition): non-placeholder species with
+    >=min_samples crops AND >=min_deployments distinct deployments.
+
     Returns (train, val, test, num_classes, class_to_species, samples_per_class),
     matching the tuple the trainer expects. Each sample dict has img_path, bbox
     (xywh), class_idx, species, deployment.
     """
     raw = _load_rows(csv_path, img_dir, extra_img_dirs, filter_placeholders)
 
-    # >=min_samples species filter (the benchmark inclusion threshold).
-    sp_counter = Counter(s["species"] for s in raw)
-    kept_species = sorted(sp for sp, c in sp_counter.items() if c >= min_samples)
+    kept_species = benchmark_species(raw, min_samples, min_deployments)
     species_to_class = {sp: i for i, sp in enumerate(kept_species)}
     class_to_species = {i: sp for sp, i in species_to_class.items()}
 
@@ -190,6 +212,21 @@ def split_dataset(
 
     return (folds["train"], folds["val"], folds["test"],
             len(kept_species), class_to_species, sp_counts)
+
+
+def split_from_config(csv_path, img_dir, cfg, extra_img_dirs=None):
+    """split_dataset driven by a BenchmarkConfig (the single source of truth for
+    the inclusion rules + split params). Scripts call this so they all read the
+    same benchmark definition."""
+    return split_dataset(
+        csv_path, img_dir,
+        min_samples=cfg.min_samples,
+        min_deployments=cfg.min_deployments,
+        ratios=tuple(cfg.ratios),
+        seed=cfg.split_seed,
+        filter_placeholders=cfg.filter_placeholders,
+        extra_img_dirs=extra_img_dirs,
+    )
 
 
 def _log_split_summary(folds, dep_fold, kept_species, samples):

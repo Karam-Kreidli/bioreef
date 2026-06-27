@@ -5,7 +5,7 @@ from .taxonomy import (
     get_taxonomy_tree,
     build_taxonomy_maps,
 )
-from .split import split_dataset, deployment_id
+from .split import split_dataset, split_from_config, benchmark_species, deployment_id
 from .context import ContextHarvester
 from .augmentation import MarineAugmentor
 from .restoration import WaterNetRestorer
@@ -13,6 +13,6 @@ from .dataset import FishCropDataset
 
 __all__ = [
     "is_placeholder_species", "get_taxonomy_tree", "build_taxonomy_maps",
-    "split_dataset", "deployment_id",
+    "split_dataset", "split_from_config", "benchmark_species", "deployment_id",
     "ContextHarvester", "MarineAugmentor", "WaterNetRestorer", "FishCropDataset",
 ]

@@ -77,11 +77,16 @@ def test_real_split_is_leakage_safe():
     assert 0.08 <= len(test) / total <= 0.22, "test ratio off"
     print("  [3] ratios near 70/15/15: OK")
 
-    # 4. Species stratification — how many of the benchmark species reach test.
+    # 4. Species stratification — with the >=3-deployment inclusion rule every
+    #    benchmark species CAN be split, so test coverage should be ~complete.
     test_species = set(s["species"] for s in test)
     coverage = len(test_species) / num_classes
-    print(f"  [4] test covers {len(test_species)}/{num_classes} species ({coverage:.1%})")
-    assert coverage >= 0.90, "test species coverage too low"
+    print(f"  [4] benchmark species: {num_classes} | test covers "
+          f"{len(test_species)} ({coverage:.1%})")
+    # >=3 deployments guarantees a species CAN be split, not that it always
+    # reaches all three folds (a 3-deployment species may land 2 train + 1 val).
+    assert num_classes == 296, f"expected 296 benchmark species, got {num_classes}"
+    assert coverage >= 0.95, "test species coverage too low for a >=3-dep benchmark"
     print("test_real_split_is_leakage_safe OK")
 
 

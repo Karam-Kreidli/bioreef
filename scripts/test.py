@@ -22,7 +22,8 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from bioreef.data import split_dataset, get_taxonomy_tree, FishCropDataset
+from bioreef.config import BenchmarkConfig
+from bioreef.data import split_from_config, get_taxonomy_tree, FishCropDataset
 from bioreef.model import Classifier, ModelConfig
 from bioreef.training import set_seed
 from bioreef.eval import evaluate_classification, per_class_accuracy
@@ -53,11 +54,11 @@ def main():
     num_classes = ckpt["num_classes"]
 
     set_seed(saved.get("seed", 0))
-    # Reconstruct the SAME split (fixed split_seed + min_samples from training).
-    _train, _val, test_s, n_split, _c2s, sp_counts = split_dataset(
-        args.csv, args.img_dir,
-        min_samples=saved.get("min_samples", 20),
-        seed=saved.get("split_seed", 0),
+    # Reconstruct the SAME split from the checkpoint's stored benchmark config.
+    bench = BenchmarkConfig(**ckpt["benchmark_config"])
+    print(f"[config] {bench}")
+    _train, _val, test_s, n_split, _c2s, sp_counts = split_from_config(
+        args.csv, args.img_dir, bench,
     )
     assert n_split == num_classes, (
         f"split class count {n_split} != checkpoint {num_classes} — "

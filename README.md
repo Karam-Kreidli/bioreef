@@ -26,6 +26,17 @@ scatters near-duplicate views of one individual across train/test and inflates
 accuracy. We split at the **deployment level** instead — every crop from one
 deployment goes entirely into train, val, or test.
 
+### Benchmark definition
+
+The inclusion rules live in [`configs/benchmark.yaml`](configs/benchmark.yaml) —
+the single source of truth that every script reads, so train/test/export can
+never disagree on what the benchmark is. A species is included iff it is not a
+placeholder, has **>=20 crops**, and appears in **>=3 distinct deployments** (the
+deployment rule guarantees it can be split across all three folds). On the full
+OzFish metadata this yields **296 species / 76,395 crops**. CLI flags
+(`--min_samples`, `--min_deployments`, `--split_seed`) override individual config
+fields for one-off experiments.
+
 ## Repository layout
 
 ```
@@ -39,7 +50,9 @@ bioreef/
 scripts/
   train.py     train the proposed model or any ablation (single-GPU or DDP)
   test.py      evaluate a checkpoint on the held-out test split
-tests/         metric unit tests + split leakage-safety tests
+  export_split.py  write the released split file from the config
+configs/       benchmark.yaml — inclusion rules + split params (source of truth)
+tests/         metric, split-leakage, and config unit tests
 splits/        released split files (crop -> split, deployment, taxonomy)
 ```
 

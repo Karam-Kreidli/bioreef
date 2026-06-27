@@ -1,0 +1,20 @@
+# BioReef-Classify — benchmark definition (single source of truth).
+#
+# These rules DEFINE the benchmark: change them and you change which species and
+# crops are included, and how they are split. Every script (train/test/export/
+# make_subset) reads this file so they can never disagree on what the benchmark
+# is. CLI flags override individual fields for one-off experiments.
+
+inclusion:
+  # A species is included iff it clears BOTH thresholds (and is not a placeholder).
+  min_samples: 20          # >= this many crops
+  min_deployments: 3       # appears in >= this many distinct BRUVS deployments
+                           # (guarantees it can be split across all three folds)
+  filter_placeholders: true   # drop sp1/sp3/unidentified/fish/etc.
+
+split:
+  # Leakage-safe split is grouped by deployment; ratios are over crops (deployment
+  # sizes vary, so realised ratios drift slightly from these targets).
+  ratios: [0.70, 0.15, 0.15]   # train / val / test
+  split_seed: 0                # FIXED across all model runs — keeps the benchmark
+                               # split constant; vary --seed for model init only.

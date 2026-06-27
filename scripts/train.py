@@ -32,8 +32,9 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from bioreef.config import BenchmarkConfig, DEFAULT_CONFIG_PATH
 from bioreef.data import (
-    split_dataset, get_taxonomy_tree, build_taxonomy_maps, FishCropDataset,
+    split_from_config, get_taxonomy_tree, build_taxonomy_maps, FishCropDataset,
 )
 from bioreef.model import Classifier, ModelConfig, HSLMLoss
 from bioreef.training import set_seed, CBFocalLoss, BalancedDistributedSampler, EMA
@@ -46,9 +47,13 @@ def parse_args():
     # Data
     p.add_argument("--csv", required=True, help="frame_metadata.csv")
     p.add_argument("--img_dir", required=True, help="directory of crop frames")
-    p.add_argument("--min_samples", type=int, default=20)
-    p.add_argument("--split_seed", type=int, default=0,
-                   help="FIXED across runs — keeps the benchmark split constant.")
+    # Benchmark definition lives in the config; these override individual fields.
+    p.add_argument("--config", default=DEFAULT_CONFIG_PATH,
+                   help="benchmark config YAML (inclusion rules + split params)")
+    p.add_argument("--min_samples", type=int, default=None, help="override config")
+    p.add_argument("--min_deployments", type=int, default=None, help="override config")
+    p.add_argument("--split_seed", type=int, default=None,
+                   help="override config; FIXED across runs to keep the split constant")
     # Reproducibility
     p.add_argument("--seed", type=int, default=0, help="model init / aug / sampler seed")
     p.add_argument("--deterministic", action="store_true")
@@ -99,9 +104,18 @@ def main():
 
     set_seed(args.seed, deterministic=args.deterministic)
 
-    # Fixed benchmark split.
-    train_s, val_s, _test_s, num_classes, idx_to_sp, sp_counts = split_dataset(
-        args.csv, args.img_dir, min_samples=args.min_samples, seed=args.split_seed,
+    # Benchmark definition: config file, with any CLI flags overriding.
+    bench = BenchmarkConfig.from_yaml(args.config).apply_overrides(
+        min_samples=args.min_samples,
+        min_deployments=args.min_deployments,
+        split_seed=args.split_seed,
+    )
+    if is_main:
+        print(f"[config] {bench}")
+
+    # Fixed benchmark split (driven by the config).
+    train_s, val_s, _test_s, num_classes, idx_to_sp, sp_counts = split_from_config(
+        args.csv, args.img_dir, bench,
     )
     tree = get_taxonomy_tree(args.csv)
     if is_main:
@@ -207,6 +221,7 @@ def main():
                     "idx_to_sp": idx_to_sp,
                     "num_classes": num_classes,
                     "model_config": mcfg.__dict__,
+                    "benchmark_config": bench.__dict__,   # reconstruct the exact split
                     "args": vars(args),
                 }, args.out)
                 print(f"  [+] best HD {best_hd:.4f} -> {args.out}")
