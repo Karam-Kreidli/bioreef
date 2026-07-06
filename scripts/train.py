@@ -44,9 +44,9 @@ from bioreef.eval import evaluate_classification
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    # Data
-    p.add_argument("--csv", required=True, help="frame_metadata.csv")
-    p.add_argument("--img_dir", required=True, help="directory of crop frames")
+    # Data — default to the paths in the config; these override for a one-off.
+    p.add_argument("--csv", default=None, help="override config data.csv_path")
+    p.add_argument("--img_dir", default=None, help="override config data.img_dir")
     # Benchmark definition lives in the config; these override individual fields.
     p.add_argument("--config", default=DEFAULT_CONFIG_PATH,
                    help="benchmark config YAML (inclusion rules + split params)")
@@ -109,15 +109,19 @@ def main():
         min_samples=args.min_samples,
         min_deployments=args.min_deployments,
         split_seed=args.split_seed,
+        csv_path=args.csv,
+        img_dir=args.img_dir,
     )
+    if not bench.csv_path:
+        raise SystemExit("no dataset CSV: set data.csv_path in the config or pass --csv")
     if is_main:
         print(f"[config] {bench}")
 
-    # Fixed benchmark split (driven by the config).
+    # Fixed benchmark split (driven by the config's data paths).
     train_s, val_s, _test_s, num_classes, idx_to_sp, sp_counts = split_from_config(
-        args.csv, args.img_dir, bench,
+        bench.csv_path, bench.img_dir, bench,
     )
-    tree = get_taxonomy_tree(args.csv)
+    tree = get_taxonomy_tree(bench.csv_path)
     if is_main:
         print(f"[data] {num_classes} species | train {len(train_s)} val {len(val_s)}")
 

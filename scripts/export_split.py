@@ -25,9 +25,9 @@ from bioreef.data.taxonomy import get_taxonomy_tree
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--csv", required=True)
     p.add_argument("--config", default=DEFAULT_CONFIG_PATH,
                    help="benchmark config YAML (inclusion rules + split params)")
+    p.add_argument("--csv", default=None, help="override config data.csv_path")
     p.add_argument("--min_samples", type=int, default=None, help="override config")
     p.add_argument("--min_deployments", type=int, default=None, help="override config")
     p.add_argument("--split_seed", type=int, default=None, help="override config")
@@ -36,21 +36,26 @@ def parse_args():
                    help="only include crops whose image is on disk (default: "
                         "include all CSV rows, since the split file is about the "
                         "label set, not local file availability)")
-    p.add_argument("--img_dir", default="", help="needed only with --require_images")
+    p.add_argument("--img_dir", default=None, help="override config data.img_dir "
+                                                    "(used with --require_images)")
     return p.parse_args()
 
 
 def main():
     args = parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
-    tree = get_taxonomy_tree(args.csv)
 
     bench = BenchmarkConfig.from_yaml(args.config).apply_overrides(
         min_samples=args.min_samples,
         min_deployments=args.min_deployments,
         split_seed=args.split_seed,
+        csv_path=args.csv,
+        img_dir=args.img_dir,
     )
+    if not bench.csv_path:
+        raise SystemExit("no dataset CSV: set data.csv_path in the config or pass --csv")
     print(f"[config] {bench}")
+    tree = get_taxonomy_tree(bench.csv_path)
 
     real_exists = os.path.exists
     if not args.require_images:
@@ -58,8 +63,10 @@ def main():
         # the full labelled set, not one machine's local frames.
         split_mod.os.path.exists = lambda p: True if str(p).endswith(".png") else real_exists(p)
     try:
+        # img_dir + extra_img_dirs both come from bench (split_from_config reads
+        # cfg.extra_img_dirs), so multi-folder datasets are handled from config.
         train, val, test, num_classes, _c2s, _spc = split_from_config(
-            args.csv, args.img_dir, bench,
+            bench.csv_path, bench.img_dir, bench,
         )
     finally:
         split_mod.os.path.exists = real_exists

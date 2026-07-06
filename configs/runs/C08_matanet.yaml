@@ -1,0 +1,20 @@
+# C08 — MATANet (official repo, OzFish split). Keystone prior-work comparison.
+#
+# MATANet shares this work's multi-context architecture, so it is NOT built here
+# and NOT a single-crop timm baseline. It is run FROM THE OFFICIAL REPO on our
+# split, and its predictions are ingested into our metric harness. See
+# bioreef.model.factory.build_matanet and (to be added) scripts/matanet_bridge.py.
+#
+# Official repo: https://github.com/dhlee-work/fathomnet-cvpr2025-ssl
+#   train: python B1.BuildModel.py --config config/experiment-final14.yaml
+#   eval:  python C1.TestModel.py  --config config/experiment-final14.yaml
+run_id: C08
+name: matanet
+priority: core
+description: >
+  MATANet run from the official repo on the OzFish deployment-grouped split.
+  DINOv2-base backbone, multi-context attention, per-level classifier heads.
+  Do NOT quote their FathomNet numbers — run their code on our split.
+
+model_family: matanet
+seeds: [0, 1, 2]

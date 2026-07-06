@@ -1,0 +1,21 @@
+# C05 — ConvNeXt-T fine-tuned (modern CNN). Single ROI crop, flat CE.
+run_id: C05
+name: convnext_tiny
+priority: core
+description: >
+  Modern CNN baseline: ImageNet-pretrained ConvNeXt-Tiny fine-tuned end-to-end
+  on the ROI crop. Flat CE, random sampler.
+
+model_family: timm
+timm_name: convnext_tiny
+pretrained: true
+
+hslm: false
+loss: ce
+sampler: random
+
+epochs: 30
+warmup_epochs: 3
+batch_size: 32
+lr: 0.0001
+seeds: [0, 1, 2]

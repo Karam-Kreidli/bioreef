@@ -217,7 +217,10 @@ def split_dataset(
 def split_from_config(csv_path, img_dir, cfg, extra_img_dirs=None):
     """split_dataset driven by a BenchmarkConfig (the single source of truth for
     the inclusion rules + split params). Scripts call this so they all read the
-    same benchmark definition."""
+    same benchmark definition. extra_img_dirs defaults to cfg.extra_img_dirs so
+    multi-folder datasets are handled purely from config."""
+    if extra_img_dirs is None:
+        extra_img_dirs = getattr(cfg, "extra_img_dirs", None) or []
     return split_dataset(
         csv_path, img_dir,
         min_samples=cfg.min_samples,

@@ -19,12 +19,16 @@ env/
 *.ckpt
 weights/
 
-# Run outputs
+# Run outputs (root-anchored so 'runs/' never matches configs/runs/, which holds
+# the experiment CONFIGS and must be tracked).
 eval_out/
-outputs/
-runs/
+/outputs/
+/runs/
 wandb/
 *.log
+
+# Per-run metrics.json under results/ ARE committed (the paper's evidence); only
+# checkpoints are excluded, via the *.pt/*.pth rules above.
 
 # Data — frames and metadata are large / not redistributable here.
 # The released benchmark ships the SPLIT FILE (splits/*.csv), not the images.

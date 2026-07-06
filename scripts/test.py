@@ -32,8 +32,8 @@ from bioreef.eval import evaluate_classification, per_class_accuracy
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--csv", required=True)
-    p.add_argument("--img_dir", required=True)
+    p.add_argument("--csv", default=None, help="override checkpoint/config data path")
+    p.add_argument("--img_dir", default=None, help="override checkpoint/config data path")
     p.add_argument("--weights", required=True)
     p.add_argument("--batch_size", type=int, default=32)
     p.add_argument("--num_workers", type=int, default=4)
@@ -48,17 +48,32 @@ def main():
     os.makedirs(args.out_dir, exist_ok=True)
 
     ckpt = torch.load(args.weights, map_location=device, weights_only=False)
+    # test.py evaluates train.py checkpoints (which carry these keys). run.py
+    # writes a different format and does its own eval inline — give a clear error
+    # rather than a cryptic KeyError if the wrong checkpoint is passed.
+    missing = [k for k in ("args", "model_config", "benchmark_config",
+                           "idx_to_sp", "num_classes", "model") if k not in ckpt]
+    if missing:
+        raise SystemExit(
+            f"{args.weights} is not a train.py checkpoint (missing {missing}). "
+            "run.py checkpoints are evaluated inline by run.py, not test.py."
+        )
     saved = ckpt["args"]
     mcfg = ModelConfig(**ckpt["model_config"])
     idx_to_sp = {int(k): v for k, v in ckpt["idx_to_sp"].items()}
     num_classes = ckpt["num_classes"]
 
     set_seed(saved.get("seed", 0))
-    # Reconstruct the SAME split from the checkpoint's stored benchmark config.
-    bench = BenchmarkConfig(**ckpt["benchmark_config"])
+    # Reconstruct the SAME split from the checkpoint's stored benchmark config;
+    # dataset paths come from the checkpoint unless overridden on the CLI.
+    bench = BenchmarkConfig(**ckpt["benchmark_config"]).apply_overrides(
+        csv_path=args.csv, img_dir=args.img_dir,
+    )
+    if not bench.csv_path:
+        raise SystemExit("no dataset CSV: the checkpoint stored none; pass --csv")
     print(f"[config] {bench}")
     _train, _val, test_s, n_split, _c2s, sp_counts = split_from_config(
-        args.csv, args.img_dir, bench,
+        bench.csv_path, bench.img_dir, bench,
     )
     assert n_split == num_classes, (
         f"split class count {n_split} != checkpoint {num_classes} — "
@@ -95,7 +110,7 @@ def main():
     preds = np.array(preds)
     targets = np.array(targets)
     scores = np.vstack(scores)
-    tree = get_taxonomy_tree(args.csv)
+    tree = get_taxonomy_tree(bench.csv_path)
 
     m = evaluate_classification(preds, targets, scores, num_classes, idx_to_sp, tree, sp_counts)
 

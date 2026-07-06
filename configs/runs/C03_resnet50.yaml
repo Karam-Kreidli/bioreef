@@ -1,0 +1,21 @@
+# C03 — ResNet-50 fine-tuned (classic CNN reference). Single ROI crop, flat CE.
+run_id: C03
+name: resnet50
+priority: core
+description: >
+  Classic CNN baseline: ImageNet-pretrained ResNet-50 fine-tuned end-to-end on
+  the ROI crop (same crop the DINO family sees). Flat CE, random sampler.
+
+model_family: timm
+timm_name: resnet50
+pretrained: true
+
+hslm: false
+loss: ce
+sampler: random
+
+epochs: 30
+warmup_epochs: 3
+batch_size: 32
+lr: 0.0001
+seeds: [0, 1, 2]

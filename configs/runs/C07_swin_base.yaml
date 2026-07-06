@@ -1,0 +1,23 @@
+# C07 — Swin-B fine-tuned (transformer). Single ROI crop, flat CE.
+# Swin-T if memory-bound (set timm_name: swin_tiny_patch4_window7_224 and report
+# the size honestly).
+run_id: C07
+name: swin_base
+priority: core
+description: >
+  Transformer baseline: ImageNet-pretrained Swin-B fine-tuned end-to-end on the
+  ROI crop. Flat CE, random sampler.
+
+model_family: timm
+timm_name: swin_base_patch4_window7_224
+pretrained: true
+
+hslm: false
+loss: ce
+sampler: random
+
+epochs: 30
+warmup_epochs: 3
+batch_size: 32
+lr: 0.0001
+seeds: [0, 1, 2]

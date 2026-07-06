@@ -1,0 +1,29 @@
+# C09 — Proposed model (reference R). THE reference config every ablation edits.
+#   frozen DINOv3 . MCEAM 1 block / 3 scales . HSLM . CB-Focal + balanced sampler
+run_id: C09
+name: proposed
+priority: core
+description: >
+  The proposed model: frozen DINOv3 ViT-B/16, MCEAM single-block cross-attention
+  over ROI/social/habitat context, marginalization HSLM hierarchy loss, CB-Focal
+  species term + class-balanced sampler. All ablations (A1-A9) change exactly one
+  field of this config.
+
+model_family: dino
+backbone: dinov3
+context_levels: 3          # ROI / social(3x) / habitat(5x)
+attention_depth: 1         # single block
+unfreeze_blocks: 0         # fully frozen backbone
+
+hslm: true                 # marginalization hierarchy loss
+loss: cbfocal              # (species term inside HSLM)
+sampler: balanced
+family_weight: 3.0
+genus_weight: 2.0
+species_weight: 1.0
+
+epochs: 30
+warmup_epochs: 3
+batch_size: 32
+lr: 0.0001
+seeds: [0, 1, 2]

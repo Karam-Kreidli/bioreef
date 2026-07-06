@@ -94,6 +94,34 @@ torchrun --nproc_per_node=2 scripts/train.py --csv ... --img_dir ... --seed 0
 python scripts/test.py --csv frame_metadata.csv --img_dir <frames> --weights checkpoint.pt
 ```
 
+### The run campaign (recommended path)
+
+The whole benchmark is driven by config files so ~50 runs stay auditable. Each
+panel/ablation config is one file in [`configs/runs/`](configs/runs/); run it by
+id and it saves its own result + provenance:
+
+```bash
+# dataset paths come from configs/benchmark.yaml (data.csv_path / data.img_dir)
+python scripts/run.py C09 --seed 0     # one config, one seed
+python scripts/run.py C09              # all seeds in the config (0,1,2)
+python scripts/aggregate.py           # -> RESULTS.md (the benchmark table)
+```
+
+Each run writes `results/<slug>/seed<N>/` with `metrics.json` (the metric panel),
+`run_config.yaml`, and `benchmark_config.yaml` — so a reviewer can open any table
+number and see exactly what produced it, then reproduce it with one command.
+[`MANIFEST.md`](MANIFEST.md) is the campaign ledger.
+
+**Model families** (dispatched by the config's `model_family`, so config selects
+architecture without code edits):
+- `dino` — frozen ViT + optional MCEAM. Config-only: C01, C09, and every A* ablation.
+- `timm` — a fine-tuned `timm` backbone on the ROI crop: C03/C05/C07.
+- `matanet` — run from the [official repo](https://github.com/dhlee-work/fathomnet-cvpr2025-ssl)
+  on our split (shared multi-context architecture; not reimplemented here): C08.
+
+`scripts/train.py` / `test.py` remain available for manual single runs and heavy
+multi-GPU (DDP) training.
+
 ### Ablations (one flag each — see paper Table K.2)
 
 | Flag | Ablation |

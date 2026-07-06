@@ -29,6 +29,12 @@ class BenchmarkConfig:
     # Split.
     ratios: List[float] = field(default_factory=lambda: [0.70, 0.15, 0.15])
     split_seed: int = 0
+    # Data location — set ONCE here so no script needs --csv/--img_dir per run.
+    csv_path: str = ""
+    img_dir: str = ""
+    # Extra image dirs searched (in order) when a frame isn't in img_dir — for
+    # datasets spread across folders (e.g. frames_1/ + frames_2/).
+    extra_img_dirs: List[str] = field(default_factory=list)
 
     @classmethod
     def from_yaml(cls, path: Optional[str] = None) -> "BenchmarkConfig":
@@ -43,7 +49,8 @@ class BenchmarkConfig:
             data = yaml.safe_load(f) or {}
         inc = data.get("inclusion", {})
         spl = data.get("split", {})
-        flat = {**inc, **spl}
+        dat = data.get("data", {})
+        flat = {**inc, **spl, **dat}
         for fld in fields(cls):
             if fld.name in flat and flat[fld.name] is not None:
                 setattr(cfg, fld.name, flat[fld.name])

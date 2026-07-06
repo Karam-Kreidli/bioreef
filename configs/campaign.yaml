@@ -1,0 +1,39 @@
+# Campaign — WHICH runs to launch, in one place.
+#
+# Edit this list to control the whole batch, then:
+#     python scripts/run.py --campaign
+# It runs each listed config (at the seeds below, or each config's own `seeds:`
+# if 'seeds' here is null), skipping any run that already has a metrics.json —
+# so it is safely resumable.
+#
+# Comment out a line to skip that run without deleting it.
+
+# Seeds for the whole campaign. Set to null to use each run config's own `seeds:`.
+seeds: [0, 1, 2]
+
+# The runs to execute, by id (resolved from configs/runs/<id>_*.yaml).
+runs:
+  # --- benchmark panel (K.1, Core) ---
+  - C01        # linear probe (lower bound)
+  - C03        # ResNet-50
+  - C05        # ConvNeXt-T
+  - C07        # Swin-B
+  - C09        # proposed model (reference)
+  # C08 MATANet runs from the official repo, not here — see configs/runs/C08_matanet.yaml
+
+  # --- ablations (K.2) ---
+  - A1         # DINOv2 backbone
+  - A2         # no MCEAM (context off)
+  - A3         # ROI-scale only
+  - A4         # attention depth 2
+  - A4b        # attention depth 4 (optional)
+  - A5         # flat softmax (no hierarchy)
+  - A6         # random sampler
+  - A7         # plain CE species loss
+  - A8         # no long-tail handling
+  - A9         # ROI-only anchor
+
+  # --- deferred Optional tier (K.1) — uncomment if compute allows ---
+  # - C02      # DINOv2 linear probe (redundant with A1)
+  # - C04      # EfficientNetV2-S
+  # - C06      # ViT-B

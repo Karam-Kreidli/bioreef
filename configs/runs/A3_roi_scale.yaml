@@ -1,0 +1,25 @@
+# A3 — context scales 3 -> 1 (ROI-scale only).
+# (C09 reference with exactly context_levels changed.)
+run_id: A3
+name: roi_scale
+priority: core
+description: 'C09 with one change: context scales 3 -> 1 (ROI-scale only).'
+model_family: dino
+backbone: dinov3
+context_levels: 1
+attention_depth: 1
+unfreeze_blocks: 0
+hslm: true
+loss: cbfocal
+sampler: balanced
+family_weight: 3.0
+genus_weight: 2.0
+species_weight: 1.0
+epochs: 30
+warmup_epochs: 3
+batch_size: 32
+lr: 0.0001
+seeds:
+- 0
+- 1
+- 2
