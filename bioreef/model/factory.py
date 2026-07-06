@@ -61,14 +61,11 @@ def build_matanet(run_cfg, num_classes: int):
     to reimplement it here inside our Classifier.
 
     Official repo: https://github.com/dhlee-work/fathomnet-cvpr2025-ssl
-    Methodology (see scripts/matanet_bridge.py once added):
-      1. export our split + taxonomy into their hierarchical_label.csv /
-         dist_categories.csv format (A0.data_preprocess.py inputs)
-      2. train with their B1.BuildModel.py --config config/experiment-final14.yaml
-      3. evaluate with C1.TestModel.py; ingest predictions into our metric harness
+    The full bridge + workflow lives in matanet/ (export_ozfish.py, patch_matanet.py,
+    ingest_predictions.py); see matanet/README.md.
     """
     raise NotImplementedError(
         "C08 MATANet is run from the official repo "
         "(https://github.com/dhlee-work/fathomnet-cvpr2025-ssl), not built here. "
-        "See build_matanet() docstring for the data-bridge methodology."
+        "Use the bridge in matanet/ (see matanet/README.md)."
     )
