@@ -33,7 +33,7 @@ import torch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from bioreef.config import BenchmarkConfig, DEFAULT_CONFIG_PATH
 from bioreef.run_config import RunConfig
-from bioreef.training import set_seed
+from bioreef.training import set_seed, resolve_device
 from bioreef.training.loop import train_and_evaluate
 
 DEFAULT_CAMPAIGN_PATH = os.path.join(
@@ -55,6 +55,8 @@ def parse_args():
     p.add_argument("--config", default=DEFAULT_CONFIG_PATH, help="benchmark config YAML")
     p.add_argument("--csv", default=None, help="override data.csv_path")
     p.add_argument("--img_dir", default=None, help="override data.img_dir")
+    p.add_argument("--gpu", default=None,
+                   help="GPU to use, e.g. 1 or cuda:1 or cpu (overrides config 'device')")
     p.add_argument("--batch_size", type=int, default=32)
     p.add_argument("--num_workers", type=int, default=4)
     p.add_argument("--results_dir", default="results")
@@ -161,8 +163,9 @@ def run_batch(run_ids, campaign_seeds, bench, args, device):
 
 def main():
     args = parse_args()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     bench = resolve_benchmark(args)
+    device = resolve_device(args.gpu, bench.device)   # --gpu > config 'device' > auto
+    print(f"[device] {device}")
 
     if args.campaign:
         run_ids, campaign_seeds = load_campaign(args.campaign)

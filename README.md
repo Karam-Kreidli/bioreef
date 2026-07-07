@@ -102,10 +102,16 @@ id and it saves its own result + provenance:
 
 ```bash
 # dataset paths come from configs/benchmark.yaml (data.csv_path / data.img_dir)
-python scripts/run.py C09 --seed 0     # one config, one seed
-python scripts/run.py C09              # all seeds in the config (0,1,2)
-python scripts/aggregate.py           # -> RESULTS.md (the benchmark table)
+python scripts/run.py C09 --seed 0            # one config, one seed
+python scripts/run.py C09                     # all seeds in the config (0,1,2)
+python scripts/run.py C09 --seed 0 --gpu 1    # pin to GPU 1 (see below)
+python scripts/aggregate.py                   # -> RESULTS.md (the benchmark table)
 ```
+
+**Choosing a GPU:** `--gpu N` (or `--gpu cpu`) on `run.py`/`test.py` overrides the
+`device` field in `configs/benchmark.yaml` (empty = auto `cuda:0`). On a
+multi-GPU box you can run different configs in parallel from separate shells:
+`run.py C09 --gpu 0` and `run.py C03 --gpu 1`.
 
 Each run writes `results/<slug>/seed<N>/` with `metrics.json` (the metric panel),
 `run_config.yaml`, and `benchmark_config.yaml` — so a reviewer can open any table

@@ -11,6 +11,10 @@
 data:
   csv_path: frame_metadata.csv    # OzFish annotation CSV
   img_dir: frames                 # primary directory containing the crop frames
+  # Default compute device. Empty = auto (cuda:0 if available, else cpu).
+  # --gpu on run.py/test.py overrides this (e.g. run different configs on
+  # different GPUs in parallel from separate shells).
+  device: ""                      # e.g. "cuda:0", "cuda:1", "cpu"
   # If frames are spread across multiple folders, list the extras here. Each
   # frame is looked up in img_dir first, then these in order (first match wins).
   # Leave empty ([]) for a single flat folder.

@@ -4,7 +4,9 @@ from .seed import set_seed
 from .losses import CBFocalLoss
 from .sampler import BalancedDistributedSampler
 from .ema import EMA
-from .ddp import setup_ddp, cleanup_ddp, get_logger, report_memory, safe_imread
+from .ddp import (
+    setup_ddp, cleanup_ddp, get_logger, report_memory, safe_imread, resolve_device,
+)
 
 __all__ = [
     "set_seed",
@@ -12,4 +14,5 @@ __all__ = [
     "BalancedDistributedSampler",
     "EMA",
     "setup_ddp", "cleanup_ddp", "get_logger", "report_memory", "safe_imread",
+    "resolve_device",
 ]

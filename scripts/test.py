@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from bioreef.config import BenchmarkConfig
 from bioreef.data import split_from_config, get_taxonomy_tree, FishCropDataset
 from bioreef.model import Classifier, ModelConfig
-from bioreef.training import set_seed
+from bioreef.training import set_seed, resolve_device
 from bioreef.eval import evaluate_classification, per_class_accuracy
 
 
@@ -35,6 +35,8 @@ def parse_args():
     p.add_argument("--csv", default=None, help="override checkpoint/config data path")
     p.add_argument("--img_dir", default=None, help="override checkpoint/config data path")
     p.add_argument("--weights", required=True)
+    p.add_argument("--gpu", default=None,
+                   help="GPU to use, e.g. 1 or cuda:1 or cpu (overrides config 'device')")
     p.add_argument("--batch_size", type=int, default=32)
     p.add_argument("--num_workers", type=int, default=4)
     p.add_argument("--out_dir", default="eval_out")
@@ -44,10 +46,9 @@ def parse_args():
 
 def main():
     args = parse_args()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     os.makedirs(args.out_dir, exist_ok=True)
 
-    ckpt = torch.load(args.weights, map_location=device, weights_only=False)
+    ckpt = torch.load(args.weights, map_location="cpu", weights_only=False)
     # test.py evaluates train.py checkpoints (which carry these keys). run.py
     # writes a different format and does its own eval inline — give a clear error
     # rather than a cryptic KeyError if the wrong checkpoint is passed.
@@ -71,7 +72,9 @@ def main():
     )
     if not bench.csv_path:
         raise SystemExit("no dataset CSV: the checkpoint stored none; pass --csv")
+    device = resolve_device(args.gpu, bench.device)   # --gpu > config 'device' > auto
     print(f"[config] {bench}")
+    print(f"[device] {device}")
     _train, _val, test_s, n_split, _c2s, sp_counts = split_from_config(
         bench.csv_path, bench.img_dir, bench,
     )

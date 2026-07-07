@@ -40,6 +40,26 @@ def report_memory(local_rank: int) -> str:
     return f"VRAM [GPU {local_rank}]: {allocated:.2f} GB / {reserved:.2f} GB"
 
 
+def resolve_device(cli_gpu=None, config_device=""):
+    """Pick the compute device. Precedence: --gpu flag > config 'device' > auto.
+        cli_gpu (int|str|None): e.g. 2 or "cuda:2" or "cpu" from --gpu.
+        config_device (str): the benchmark config's 'device' field.
+    Falls back to cpu (with a note) if CUDA is unavailable."""
+    spec = None
+    if cli_gpu is not None:
+        spec = cli_gpu if isinstance(cli_gpu, str) else f"cuda:{cli_gpu}"
+    elif config_device:
+        spec = config_device
+
+    if spec is None:
+        spec = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+    if spec.startswith("cuda") and not torch.cuda.is_available():
+        print(f"[device] CUDA unavailable; '{spec}' -> cpu")
+        spec = "cpu"
+    return torch.device(spec)
+
+
 def safe_imread(path: str):
     """cv2.imread that silences libjpeg/libpng stderr spam on corrupt frames."""
     stderr_fd = sys.stderr.fileno()
