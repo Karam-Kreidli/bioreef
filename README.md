@@ -141,6 +141,28 @@ multi-GPU (DDP) training.
 | `--loss ce` | A7 — plain CE species loss |
 | `--no_hslm --loss ce --sampler random` | A8 — all long-tail handling off |
 
+## Attention figures (qualitative)
+
+`scripts/visualize.py` renders the paper's attention panel from any saved
+checkpoint — a **two-part figure per crop**:
+
+- **Backbone saliency** (left): attention rollout over the frozen ViT on the ROI
+  crop — *does the backbone localize the fish?*
+- **MCEAM cross-attention** (right, one column per context stream): where the
+  fish `[CLS]` query attends across social / habitat / full-frame — *what
+  environmental context does MCEAM pool?*
+
+```bash
+python scripts/visualize.py --weights results/C09_proposed/seed0/checkpoint.pt \
+    --n 8 --out_dir figures/attention
+```
+
+This is a visualization tool only — it never touches the benchmark numbers and
+needs no re-runs; generate figures after training. The two maps are distinct:
+rollout is backbone self-attention (pixels that make the fish); the MCEAM maps
+are the module's cross-attention (which context patches it fused). The A2
+ablation (`context_levels=0`) has no MCEAM, so only the backbone column renders.
+
 ## Metrics
 
 `scripts/test.py` reports the full panel: **macro / class-balanced accuracy**

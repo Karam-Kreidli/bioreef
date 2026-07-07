@@ -81,3 +81,15 @@ class Classifier(nn.Module):
 
     def forward(self, streams):
         return self.head(self.embed(streams))
+
+    def forward_with_attention(self, streams):
+        """Like forward(), but also return MCEAM's cross-attention maps for
+        visualization. Returns (logits, attentions) where attentions is a
+        {stream_name: (B, H, 1, N)} dict — the ROI [CLS] query's attention onto
+        each context stream's patches. Empty dict when context is off (A2), where
+        no MCEAM exists. Never used in training/eval; keeps forward() untouched."""
+        feats = self.backbone(streams)
+        if self.mceam is None:
+            return self.head(self.roi_only_proj(feats["roi"][0])), {}
+        out = self.mceam(feats, return_attention=True)
+        return self.head(out["embedding"]), out.get("attentions", {})

@@ -122,6 +122,45 @@ class ViTBackbone(nn.Module):
                 logger.warning(f"Stream '{name}' not found in input dict.")
         return features
 
+    @torch.no_grad()
+    def attention_rollout(self, x: torch.Tensor) -> torch.Tensor:
+        """Backbone saliency for one stream via attention rollout (Abnar &
+        Zuidema, 2020): multiply the per-layer, head-averaged self-attention
+        (with residual, re-normalized) down the depth, then read the [CLS] row.
+
+        x: (B, 3, H, W). Returns (B, gh, gw) CLS->patch saliency on the patch
+        grid (register tokens dropped), each map min-max normalized to [0,1].
+        Answers 'what does the frozen ViT look at on the crop' — separate from
+        MCEAM's cross-attention.
+        """
+        outputs = self.vit(pixel_values=x, output_attentions=True)
+        attns = outputs.attentions  # tuple(L) of (B, H, T, T)
+        if not attns:
+            raise RuntimeError(
+                f"{self.pretrained_model_name} did not return attentions; "
+                "this backbone does not support rollout."
+            )
+
+        B, _, T, _ = attns[0].shape
+        device = attns[0].device
+        result = torch.eye(T, device=device).unsqueeze(0).expand(B, -1, -1).clone()
+        for a in attns:
+            a = a.mean(dim=1)                      # head-average -> (B, T, T)
+            a = a + torch.eye(T, device=device)    # add residual connection
+            a = a / a.sum(dim=-1, keepdim=True)    # renormalize rows
+            result = torch.bmm(a, result)          # accumulate down the depth
+
+        start = 1 + self.num_register_tokens       # drop CLS + register tokens
+        cls_to_patches = result[:, 0, start:]      # (B, num_patches)
+
+        grid = int(self.num_patches ** 0.5)
+        sal = cls_to_patches.reshape(B, grid, grid)
+        flat = sal.flatten(1)
+        lo = flat.min(dim=1, keepdim=True).values
+        hi = flat.max(dim=1, keepdim=True).values
+        sal = ((flat - lo) / (hi - lo + 1e-8)).reshape(B, grid, grid)
+        return sal
+
     @property
     def output_dim(self) -> int:
         return self.embed_dim
