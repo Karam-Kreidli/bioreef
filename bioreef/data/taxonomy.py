@@ -26,16 +26,24 @@ def is_placeholder_species(name) -> bool:
 
 
 def get_taxonomy_tree(csv_path: str) -> dict:
-    """{species: {'genus', 'family', 'species'}} from the metadata CSV."""
+    """{binomial: {'genus', 'family', 'species'}} from the metadata CSV.
+
+    Keyed by the full binomial ('Genus epithet') so it joins to the class labels
+    produced by split.py (which key classes on the binomial, not the bare
+    epithet). HD and the HSLM maps look species up by this key, so the two must
+    agree; keying on the epithet alone would break the join for any epithet that
+    appears under more than one genus."""
     import pandas as pd
+    from bioreef.data.split import binomial
     try:
         df = pd.read_csv(csv_path)
     except Exception:
         return {}
     tree = {}
     for _, row in df.dropna(subset=["species", "genus", "family"]).iterrows():
-        tree[row["species"]] = {
-            "genus": row["genus"], "family": row["family"], "species": row["species"]
+        name = binomial(row["genus"], row["species"])
+        tree[name] = {
+            "genus": row["genus"], "family": row["family"], "species": name
         }
     return tree
 

@@ -32,8 +32,11 @@ The inclusion rules live in [`configs/benchmark.yaml`](configs/benchmark.yaml) â
 the single source of truth that every script reads, so train/test/export can
 never disagree on what the benchmark is. A species is included iff it is not a
 placeholder, has **>=20 crops**, and appears in **>=3 distinct deployments** (the
-deployment rule guarantees it can be split across all three folds). On the full
-OzFish metadata this yields **296 species / 76,395 crops**. CLI flags
+deployment rule guarantees it can be split across all three folds). A species is
+keyed by its full binomial (genus + epithet), not the bare epithet â€” 49 epithets
+in OzFish (e.g. *niger*) are shared across multiple genera and would otherwise
+collapse distinct species into one class. On the full OzFish metadata this yields
+**321 species / 76,083 crops** (39 families, 127 genera). CLI flags
 (`--min_samples`, `--min_deployments`, `--split_seed`) override individual config
 fields for one-off experiments.
 
