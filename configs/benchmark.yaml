@@ -9,8 +9,8 @@
 # Point these at your machine's paths (e.g. the VM's frame directory). Every
 # script reads them from here; --csv / --img_dir still override for a one-off.
 data:
-  csv_path: frame_metadata.csv    # OzFish annotation CSV
-  img_dir: frames                 # primary directory containing the crop frames
+  csv_path: /home/openuae/Desktop/bioreef-classify/bioreef/data/metadata/frame_metadata.csv   # OzFish annotation CSV
+  img_dir: /home/openuae/Desktop/bioreef-classify/bioreef/data/frames                 # primary directory containing the crop frames
   # Default compute device. Empty = auto (cuda:0 if available, else cpu).
   # --gpu on run.py/test.py overrides this (e.g. run different configs on
   # different GPUs in parallel from separate shells).
