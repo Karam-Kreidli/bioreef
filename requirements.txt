@@ -1,7 +1,8 @@
-# Core
+# Core. Needs Python >=3.9 (transformers >=4.53 dropped 3.8).
 torch>=2.1
 torchvision>=0.16
-transformers>=4.40        # DINOv3 / DINOv2 backbones via AutoModel
+transformers>=4.53        # DINOv3 (dinov3_vit) landed here; <4.53 raises
+                          # "does not recognize architecture dinov3_vit"
 timm>=1.0                 # CNN/transformer baselines (C03/C05/C07)
 numpy>=1.24
 pandas>=2.0
