@@ -40,16 +40,29 @@ def report_memory(local_rank: int) -> str:
     return f"VRAM [GPU {local_rank}]: {allocated:.2f} GB / {reserved:.2f} GB"
 
 
+def _normalize_device_spec(val):
+    """Turn a --gpu / config 'device' value into a torch device string, or None.
+    A bare index ('0', 0, 1) becomes 'cuda:0' — argparse hands the flag over as a
+    string, so '0' must be treated as an index, not a literal device string. Full
+    specs ('cuda:1', 'cpu', 'mps') pass through unchanged."""
+    if val is None:
+        return None
+    s = str(val).strip()
+    if s == "":
+        return None
+    if s.isdigit():                       # '0' / '1' -> a CUDA index
+        return f"cuda:{s}"
+    return s                              # 'cuda:1', 'cpu', 'mps', ...
+
+
 def resolve_device(cli_gpu=None, config_device=""):
     """Pick the compute device. Precedence: --gpu flag > config 'device' > auto.
         cli_gpu (int|str|None): e.g. 2 or "cuda:2" or "cpu" from --gpu.
         config_device (str): the benchmark config's 'device' field.
     Falls back to cpu (with a note) if CUDA is unavailable."""
-    spec = None
-    if cli_gpu is not None:
-        spec = cli_gpu if isinstance(cli_gpu, str) else f"cuda:{cli_gpu}"
-    elif config_device:
-        spec = config_device
+    spec = _normalize_device_spec(cli_gpu)
+    if spec is None and config_device:
+        spec = _normalize_device_spec(config_device)
 
     if spec is None:
         spec = "cuda:0" if torch.cuda.is_available() else "cpu"
