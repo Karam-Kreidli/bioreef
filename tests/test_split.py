@@ -85,7 +85,7 @@ def test_real_split_is_leakage_safe():
           f"{len(test_species)} ({coverage:.1%})")
     # >=3 deployments guarantees a species CAN be split, not that it always
     # reaches all three folds (a 3-deployment species may land 2 train + 1 val).
-    assert num_classes == 296, f"expected 296 benchmark species, got {num_classes}"
+    assert num_classes == 321, f"expected 321 benchmark species, got {num_classes}"
     assert coverage >= 0.95, "test species coverage too low for a >=3-dep benchmark"
     print("test_real_split_is_leakage_safe OK")
 

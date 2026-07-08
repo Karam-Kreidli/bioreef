@@ -39,6 +39,35 @@ def deployment_id(file_name: str) -> str:
     return file_name.split("_")[0]
 
 
+# Source-data genus typos -> canonical spelling. Without this, a misspelled
+# genus splits one species into two classes (or, with the binomial key, creates a
+# spurious extra class). Applied in binomial() so every code path (split,
+# taxonomy tree, export) canonicalizes identically. Extend as new typos surface.
+_GENUS_CANON = {
+    "pterocaesio": "Pterocaesio",   # lowercase variant of Pterocaesio
+    "Epinephalis": "Epinephelus",   # misspelling of Epinephelus
+}
+
+
+def canonical_genus(genus) -> str:
+    """Normalize a genus string (fix known source typos, strip whitespace)."""
+    g = genus.strip() if isinstance(genus, str) else ""
+    return _GENUS_CANON.get(g, g)
+
+
+def binomial(genus, species) -> str:
+    """Full-binomial class label: 'Pterocaesio chrysozona'. The class KEY must be
+    the (genus, species) pair, never the bare epithet — 49 epithets in OzFish are
+    shared across multiple genera (e.g. 'niger' spans Macolor/Melichthys/Odonus/
+    Parastromateus/Scarus), which the bare key silently collapses into one class.
+    Genus is canonicalized first so source typos don't spawn spurious classes.
+    Falls back to the epithet alone when genus is missing so a partly-labelled row
+    still gets a stable key."""
+    g = canonical_genus(genus)
+    s = species.strip() if isinstance(species, str) else ""
+    return f"{g} {s}".strip() if g else s
+
+
 def _load_rows(csv_path: str, img_dir: str, extra_img_dirs, filter_placeholders):
     """Read the metadata CSV into raw samples with resolved image paths.
     Each row -> {img_path, bbox(xywh), species, deployment}. Rows whose image is
@@ -50,11 +79,15 @@ def _load_rows(csv_path: str, img_dir: str, extra_img_dirs, filter_placeholders)
     raw = []
     n_missing_img = 0
     for _, row in df.iterrows():
-        sp = row.get("species")
-        if not isinstance(sp, str) or sp.strip() == "":
+        epithet = row.get("species")
+        if not isinstance(epithet, str) or epithet.strip() == "":
             continue
-        if filter_placeholders and is_placeholder_species(sp):
+        if filter_placeholders and is_placeholder_species(epithet):
             continue
+
+        # Class label is the full binomial (genus + epithet), not the bare
+        # epithet — two genera can share an epithet and must stay distinct classes.
+        sp = binomial(row.get("genus"), epithet)
 
         fname = row["file_name"]
         img_path = None
@@ -71,7 +104,7 @@ def _load_rows(csv_path: str, img_dir: str, extra_img_dirs, filter_placeholders)
         raw.append({
             "img_path": img_path,
             "bbox": [x0, y0, x1 - x0, y1 - y0],  # xyxy -> xywh for ContextHarvester
-            "species": sp,
+            "species": sp,                        # full binomial = the class label
             "deployment": deployment_id(fname),
         })
 
