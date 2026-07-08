@@ -68,6 +68,38 @@ def binomial(genus, species) -> str:
     return f"{g} {s}".strip() if g else s
 
 
+# Crop files carry an annotation-tool suffix after the raw-frame name, e.g.
+#   frame name in CSV:  A000001_L.avi.5107.png
+#   file on disk:       A000001_L.avi.5107.png-16944-1.png
+# The trailing "-<id>-<n>.png" is an exporter/CVAT id (NOT the CSV uid — verified:
+# the numbers reference a different deployment), so it must be stripped, not used
+# as a key. This recovers the frame name that matches the CSV file_name column.
+
+
+def _frame_prefix(filename: str) -> str:
+    """Strip the crop suffix to recover the raw-frame name used in the CSV.
+    'A000001_L.avi.5107.png-16944-1.png' -> 'A000001_L.avi.5107.png'.
+    A name without the suffix is returned unchanged."""
+    import re
+    return re.sub(r"\.png-\d+-\d+\.png$", ".png", filename)
+
+
+def _build_frame_index(search_dirs):
+    """Map each raw-frame name -> its actual file path on disk, across all search
+    dirs. Scans each directory once (first dir wins on collision), so per-row
+    lookup is O(1). Handles the suffixed crop naming AND plain exact names: a file
+    is indexed under both its stripped frame name and its literal name."""
+    index = {}
+    for d in search_dirs:
+        if not d or not os.path.isdir(d):
+            continue
+        for fn in os.listdir(d):
+            path = os.path.join(d, fn)
+            for key in (_frame_prefix(fn), fn):     # frame name and literal name
+                index.setdefault(key, path)
+    return index
+
+
 def _load_rows(csv_path: str, img_dir: str, extra_img_dirs, filter_placeholders):
     """Read the metadata CSV into raw samples with resolved image paths.
     Each row -> {img_path, bbox(xywh), species, deployment}. Rows whose image is
@@ -76,6 +108,9 @@ def _load_rows(csv_path: str, img_dir: str, extra_img_dirs, filter_placeholders)
 
     df = pd.read_csv(csv_path)
     search_dirs = [img_dir] + list(extra_img_dirs or [])
+    # Index the frame directories once (crop files are named <frame>.png-<id>-<n>.png;
+    # the CSV stores <frame>.png), so each CSV row resolves to a real file in O(1).
+    frame_index = _build_frame_index(search_dirs)
     raw = []
     n_missing_img = 0
     for _, row in df.iterrows():
@@ -90,12 +125,13 @@ def _load_rows(csv_path: str, img_dir: str, extra_img_dirs, filter_placeholders)
         sp = binomial(row.get("genus"), epithet)
 
         fname = row["file_name"]
-        img_path = None
-        for d in search_dirs:
-            cand = os.path.join(d, fname)
+        # Match by the indexed frame name; fall back to a literal path check so the
+        # monkeypatched os.path.exists in export_split (label-only export) still works.
+        img_path = frame_index.get(fname)
+        if img_path is None:
+            cand = os.path.join(img_dir, fname)
             if os.path.exists(cand):
                 img_path = cand
-                break
         if img_path is None:
             n_missing_img += 1
             continue
