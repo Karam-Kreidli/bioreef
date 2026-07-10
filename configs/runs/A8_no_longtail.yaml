@@ -16,7 +16,7 @@ sampler: random
 family_weight: 3.0
 genus_weight: 2.0
 species_weight: 1.0
-epochs: 30
+epochs: 60
 warmup_epochs: 3
 batch_size: 32
 lr: 0.0001

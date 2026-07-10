@@ -16,7 +16,7 @@ hslm: false
 loss: ce
 sampler: random
 
-epochs: 30
+epochs: 60
 warmup_epochs: 3
 batch_size: 32
 lr: 0.0001
