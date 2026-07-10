@@ -13,6 +13,7 @@ Checks:
 """
 
 import os
+import sys
 from collections import defaultdict
 
 import bioreef.data.split as split_mod
@@ -107,7 +108,37 @@ def test_split_reproducible():
     print("test_split seed-sensitivity OK (seed 0 != seed 1)")
 
 
+def test_split_hashseed_invariant():
+    """The split must be identical across processes with different PYTHONHASHSEED.
+    Regression for the bug where sets of deployment strings were iterated directly
+    (their order is hash-seed dependent), so every run produced a slightly
+    different split. Runs the split in fresh subprocesses under distinct seeds and
+    asserts the fold assignment is byte-identical."""
+    import subprocess
+    if not os.path.exists(CSV):
+        print("SKIP: CSV not found")
+        return
+
+    repo = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    prog = (
+        "import bioreef.data.split as m, os, hashlib\n"
+        "r=os.path.exists\n"
+        "m.os.path.exists=lambda p: True if str(p).endswith('.png') else r(p)\n"
+        "tr,va,te,nc,c2s,spc=m.split_dataset(%r, img_dir='', min_samples=20, min_deployments=3, seed=0)\n"
+        "sig=hashlib.md5(str(sorted(s['img_path'] for s in tr)).encode()).hexdigest()\n"
+        "print(f'{nc}|{sig}')\n" % CSV
+    )
+    sigs = []
+    for hs in ("0", "1", "2", "7"):
+        env = dict(os.environ, PYTHONHASHSEED=hs, PYTHONPATH=repo)
+        out = subprocess.check_output([sys.executable, "-c", prog], env=env, text=True)
+        sigs.append(out.strip().splitlines()[-1])
+    assert len(set(sigs)) == 1, f"split varies with PYTHONHASHSEED: {set(sigs)}"
+    print(f"test_split_hashseed_invariant OK (identical across 4 hash seeds: {sigs[0][:20]}...)")
+
+
 if __name__ == "__main__":
     test_real_split_is_leakage_safe()
     test_split_reproducible()
+    test_split_hashseed_invariant()
     print("\nALL SPLIT TESTS PASSED")

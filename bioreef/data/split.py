@@ -182,11 +182,17 @@ def _greedy_grouped_split(
     fold_sp_crops = {f: Counter() for f in fold_names}        # crops per species per fold
     sp_total = Counter(s["species"] for s in samples)
 
-    # Rarest species first (fewest deployments, then fewest crops).
-    species_order = sorted(sp_deps, key=lambda sp: (len(sp_deps[sp]), sp_total[sp]))
+    # Rarest species first (fewest deployments, then fewest crops, then NAME).
+    # The species name is the final tie-break so the order can't depend on dict/
+    # set iteration order — that varies with PYTHONHASHSEED across processes and
+    # would otherwise make the split non-reproducible run-to-run.
+    species_order = sorted(sp_deps, key=lambda sp: (len(sp_deps[sp]), sp_total[sp], sp))
 
     for sp in species_order:
-        deps = [d for d in sp_deps[sp] if d not in dep_fold]
+        # sorted() before shuffle: sp_deps[sp] is a set, whose iteration order is
+        # hash-seed dependent; sort to a canonical order first so the seeded
+        # shuffle is deterministic across processes.
+        deps = sorted(d for d in sp_deps[sp] if d not in dep_fold)
         rng.shuffle(deps)
         for dep in deps:
             dep_crop_count = sum(dep_species[dep].values())
@@ -205,8 +211,8 @@ def _greedy_grouped_split(
                 fold_sp_crops[best][s2] += c
 
     # Any deployment with no benchmark species touched above (shouldn't happen,
-    # but be safe) goes to the most under-target fold.
-    for dep in dep_species:
+    # but be safe) goes to the most under-target fold. Sorted for determinism.
+    for dep in sorted(dep_species):
         if dep not in dep_fold:
             best = min(fold_names, key=lambda f: fold_crops[f] - target_crops[f])
             dep_fold[dep] = best
