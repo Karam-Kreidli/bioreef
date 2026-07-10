@@ -20,9 +20,24 @@ from tqdm import tqdm
 from bioreef.data import (
     split_from_config, get_taxonomy_tree, build_taxonomy_maps, FishCropDataset,
 )
-from bioreef.model import build_model, trainable_parameters, backbone_is_frozen, HSLMLoss
+from bioreef.model import (
+    build_model, trainable_parameters, backbone_is_frozen, Classifier, HSLMLoss,
+)
 from bioreef.training import CBFocalLoss, BalancedDistributedSampler, EMA
 from bioreef.eval import evaluate_classification
+
+
+def probe_cache_eligible(run_cfg):
+    """A run can use the frozen-feature cache iff the backbone is frozen AND there
+    is no context module — then the model is (frozen backbone -> trainable head)
+    and the frozen ROI [CLS] is a fixed per-crop input, safe to cache. Covers the
+    linear-probe family (C01/C02/A2/A9). Opt-in via run_cfg.cache_features."""
+    return (
+        getattr(run_cfg, "cache_features", False)
+        and run_cfg.model_family == "dino"
+        and run_cfg.context_levels == 0
+        and run_cfg.unfreeze_blocks == 0
+    )
 
 
 def build_loss(run_cfg, sp_counts, idx_to_sp, tree, device):
@@ -70,6 +85,13 @@ def train_and_evaluate(run_cfg, bench, seed, device, batch_size=32,
     tree = get_taxonomy_tree(bench.csv_path)
     log(f"[data] {num_classes} species | train {len(train_s)} "
         f"val {len(val_s)} test {len(test_s)}")
+
+    # Fast path: frozen-backbone probe trains only the head on cached features.
+    if probe_cache_eligible(run_cfg):
+        return _train_probe_cached(
+            run_cfg, bench, seed, device, num_classes, idx_to_sp, sp_counts, tree,
+            train_s, val_s, test_s, batch_size, num_workers, log,
+        )
 
     train_ds = FishCropDataset(train_s, is_train=True)
     val_ds = FishCropDataset(val_s, is_train=False)
@@ -136,4 +158,96 @@ def train_and_evaluate(run_cfg, bench, seed, device, batch_size=32,
     if best_state is not None:
         model.load_state_dict(best_state)
     test_metrics = evaluate(model, test_dl, device, num_classes, idx_to_sp, tree, sp_counts)
+    return test_metrics, best_val, model, idx_to_sp, num_classes
+
+
+def _probe_head_forward(model, feats):
+    """Run only the trainable head-side of a no-context Classifier on cached ROI
+    [CLS] features: roi_only_proj -> head. (embed() would re-run the backbone.)"""
+    return model.head(model.roi_only_proj(feats))
+
+
+@torch.no_grad()
+def _evaluate_features(model, features, labels, device, num_classes,
+                       idx_to_sp, tree, sp_counts, batch_size=512):
+    """Metric panel over cached features (no image I/O, no backbone)."""
+    model.eval()
+    preds, targets, scores = [], [], []
+    for i in range(0, len(labels), batch_size):
+        f = features[i:i + batch_size].to(device)
+        with torch.amp.autocast("cuda", enabled=device.type == "cuda"):
+            logits = _probe_head_forward(model, f)
+        prob = torch.softmax(logits, dim=1).float().cpu().numpy()
+        scores.append(prob)
+        preds.extend(prob.argmax(1).tolist())
+        targets.extend(labels[i:i + batch_size].tolist())
+    return evaluate_classification(
+        np.array(preds), np.array(targets), np.vstack(scores),
+        num_classes, idx_to_sp, tree, sp_counts,
+    )
+
+
+def _train_probe_cached(run_cfg, bench, seed, device, num_classes, idx_to_sp,
+                        sp_counts, tree, train_s, val_s, test_s,
+                        batch_size, num_workers, log):
+    """Linear-probe fast path: compute frozen ROI [CLS] features once (cached,
+    un-augmented, reused across seeds), then train ONLY the head on cached
+    vectors. Same return tuple + best-by-val-HD selection as the full loop."""
+    from bioreef.training.feature_cache import compute_or_load, TensorDataset
+
+    # Build the real model so the trainable head-modules (roi_only_proj + head)
+    # and the frozen backbone are exactly what the full path would use.
+    model = build_model(run_cfg, num_classes).to(device)
+    assert isinstance(model, Classifier) and model.mceam is None
+
+    # Frozen ROI [CLS] features for every split (computed once, cached to disk).
+    fx = lambda s, name: compute_or_load(
+        model.backbone, s, bench, run_cfg, name, device,
+        batch_size=max(batch_size, 64), num_workers=num_workers, log=log,
+    )
+    tr_f, tr_y = fx(train_s, "train")
+    va_f, va_y = fx(val_s, "val")
+    te_f, te_y = fx(test_s, "test")
+
+    # Train only the head-side on cached features.
+    criterion = build_loss(run_cfg, sp_counts, idx_to_sp, tree, device)
+    head_params = list(model.roi_only_proj.parameters()) + list(model.head.parameters())
+    optimizer = optim.AdamW(head_params, lr=run_cfg.lr, weight_decay=0.01)
+    epochs = run_cfg.epochs
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+
+    if run_cfg.sampler == "balanced":
+        sampler = BalancedDistributedSampler(train_s, num_replicas=1, rank=0, seed=seed)
+    else:
+        sampler = None
+    dl = DataLoader(TensorDataset(tr_f, tr_y), batch_size=batch_size,
+                    sampler=sampler, shuffle=sampler is None)
+
+    best_hd, best_val, best_state = float("inf"), None, None
+    model.backbone.eval()
+    for epoch in range(1, epochs + 1):
+        if sampler is not None:
+            sampler.set_epoch(epoch)
+        model.roi_only_proj.train(); model.head.train()
+        for f, y in dl:
+            f, y = f.to(device), y.to(device)
+            optimizer.zero_grad()
+            with torch.amp.autocast("cuda", enabled=device.type == "cuda"):
+                loss = criterion(_probe_head_forward(model, f), y)
+            loss.backward()
+            optimizer.step()
+        scheduler.step()
+
+        val = _evaluate_features(model, va_f, va_y, device, num_classes,
+                                 idx_to_sp, tree, sp_counts)
+        log(f"[val ep{epoch:02d}] macroAcc {val['macro_accuracy']:.4f} "
+            f"HD {val['mean_hd']:.4f} top1 {val['top1_accuracy']:.4f}")
+        if val["mean_hd"] < best_hd:
+            best_hd, best_val = val["mean_hd"], val
+            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+
+    if best_state is not None:
+        model.load_state_dict(best_state)
+    test_metrics = _evaluate_features(model, te_f, te_y, device, num_classes,
+                                      idx_to_sp, tree, sp_counts)
     return test_metrics, best_val, model, idx_to_sp, num_classes

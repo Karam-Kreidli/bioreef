@@ -58,6 +58,12 @@ class RunConfig:
     batch_size: int = 32
     lr: float = 1e-4
 
+    # Frozen-feature cache: for a frozen backbone with no context (C01/C02/A2/A9)
+    # the ROI [CLS] never changes, so compute it once and train only the head on
+    # cached vectors (minutes instead of hours). Ignored for any other run. The
+    # cache is un-augmented (standard linear-probe protocol).
+    cache_features: bool = False
+
     # Seeds this config is meant to run at (the campaign plan).
     seeds: List[int] = field(default_factory=lambda: [0, 1, 2])
 

@@ -24,3 +24,7 @@ seeds:
 - 0
 - 1
 - 2
+
+# Frozen backbone + no context -> cache ROI [CLS] once, train only the head
+# (minutes, not hours). Un-augmented; reused across seeds. See loop.probe_cache_eligible.
+cache_features: true
