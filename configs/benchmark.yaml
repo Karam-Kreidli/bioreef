@@ -21,8 +21,8 @@ data:
   extra_img_dirs: []
   #   e.g.
   # extra_img_dirs:
-  #   - frames_waternet_1
-  #   - frames_waternet_2
+  #   - frames_part1
+  #   - frames_part2
 
 inclusion:
   # A species is included iff it clears BOTH thresholds (and is not a placeholder).
