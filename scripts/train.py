@@ -37,6 +37,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(0, os.path.dirname(__file__))   # so `from run import ...` resolves under torchrun
 from bioreef.config import BenchmarkConfig, DEFAULT_CONFIG_PATH
 from bioreef.data import (
     split_from_config, get_taxonomy_tree, build_taxonomy_maps, FishCropDataset,
@@ -45,6 +46,9 @@ from bioreef.model import build_model, trainable_parameters, ModelConfig, HSLMLo
 from bioreef.run_config import RunConfig
 from bioreef.training import set_seed, CBFocalLoss, BalancedDistributedSampler, EMA
 from bioreef.eval import evaluate_classification
+# Reuse run.py's result writer so train.py and the campaign share one output
+# contract (results/<slug>/seed<N>/) and aggregate.py sees every run.
+from run import ResultWriter
 
 
 def parse_args():
@@ -95,7 +99,15 @@ def parse_args():
     p.add_argument("--weight_decay", type=float, default=0.01)
     p.add_argument("--ema_decay", type=float, default=0.999)
     p.add_argument("--num_workers", type=int, default=4)
-    p.add_argument("--out", default="checkpoint.pt", help="best-HD checkpoint path")
+    # Output: by default write the SAME results/<slug>/seed<N>/ tree run.py uses,
+    # so DDP runs are picked up by aggregate.py with no test.py hand-off. --out
+    # additionally writes a standalone best-HD checkpoint for manual use.
+    p.add_argument("--results_dir", default="results",
+                   help="write results/<slug>/seed<N>/{metrics.json,configs,checkpoint} here")
+    p.add_argument("--out", default=None,
+                   help="also write a standalone best-HD checkpoint to this path")
+    p.add_argument("--save_checkpoint", action="store_true",
+                   help="save checkpoint.pt inside the results dir too")
     return p.parse_args()
 
 
@@ -158,7 +170,7 @@ def main():
         print(f"[config] {bench}")
 
     # Fixed benchmark split (driven by the config's data paths).
-    train_s, val_s, _test_s, num_classes, idx_to_sp, sp_counts = split_from_config(
+    train_s, val_s, test_s, num_classes, idx_to_sp, sp_counts = split_from_config(
         bench.csv_path, bench.img_dir, bench,
     )
     tree = get_taxonomy_tree(bench.csv_path)
@@ -175,6 +187,12 @@ def main():
 
     train_ds = FishCropDataset(train_s, is_train=True)
     val_ds = FishCropDataset(val_s, is_train=False)
+    # Test set is scored once at the end, on rank 0 only.
+    test_dl = None
+    if is_main:
+        test_dl = DataLoader(FishCropDataset(test_s, is_train=False),
+                             batch_size=args.batch_size, shuffle=False,
+                             num_workers=args.num_workers, pin_memory=True)
 
     # Sampler (ablation A6/A8).
     if run_cfg.sampler == "balanced":
@@ -230,7 +248,7 @@ def main():
 
     scaler = torch.amp.GradScaler("cuda")
     ema = EMA(core, decay=args.ema_decay)
-    best_hd = float("inf")
+    best_hd, best_val, best_state = float("inf"), None, None
 
     for epoch in range(1, args.epochs + 1):
         if hasattr(train_sampler, "set_epoch"):
@@ -250,39 +268,62 @@ def main():
             ema.update(core)
         scheduler.step()
 
-        # Validation on EMA weights.
+        # Validation on EMA weights; select the best epoch by val mean HD.
         backup = ema.apply_to(core)
         metrics = run_eval(model, val_dl, device, num_classes, idx_to_sp, tree, sp_counts)
-        ema.restore(core, backup)
-
         if is_main:
             print(f"[val {epoch:02d}] macroAcc {metrics['macro_accuracy']:.4f} | "
                   f"HD {metrics['mean_hd']:.4f} | top1 {metrics['top1_accuracy']:.4f} | "
                   f"top5 {metrics.get('top5_accuracy', 0):.4f}")
             if metrics["mean_hd"] < best_hd:
-                best_hd = metrics["mean_hd"]
-                ckpt = {
-                    "model": core.state_dict(),
-                    "ema": ema.state_dict(),
-                    "idx_to_sp": idx_to_sp,
-                    "num_classes": num_classes,
-                    "run_config": run_cfg.__dict__,        # rebuilds ANY family via factory
-                    "benchmark_config": bench.__dict__,    # reconstruct the exact split
-                    "args": vars(args),
-                }
-                # test.py / visualize.py rebuild the dino Classifier from model_config;
-                # keep writing it for that family so those tools work unchanged.
-                if run_cfg.model_family == "dino":
-                    ckpt["model_config"] = ModelConfig(
-                        backbone=run_cfg.backbone, context_levels=run_cfg.context_levels,
-                        attention_depth=run_cfg.attention_depth,
-                        unfreeze_blocks=run_cfg.unfreeze_blocks,
-                    ).__dict__
-                torch.save(ckpt, args.out)
-                print(f"  [+] best HD {best_hd:.4f} -> {args.out}")
+                best_hd, best_val = metrics["mean_hd"], metrics
+                # snapshot the EMA weights of the best epoch (CPU copy)
+                best_state = {k: v.detach().cpu().clone() for k, v in core.state_dict().items()}
+        ema.restore(core, backup)
+
+    # --- Final: score the held-out TEST set on the best epoch and write the same
+    # results/<slug>/seed<N>/ tree run.py produces (rank 0 only) --------------
+    if is_main:
+        if best_state is not None:
+            core.load_state_dict(best_state)
+        # Evaluate on the unwrapped module (core), not the DDP wrapper.
+        test_metrics = run_eval(core, test_dl, device, num_classes, idx_to_sp, tree, sp_counts)
+
+        result = {
+            "run_id": run_cfg.run_id, "slug": run_cfg.slug,
+            "model_family": run_cfg.model_family, "seed": args.seed,
+            "num_classes": num_classes, "test": test_metrics, "val_best": best_val,
+        }
+        writer = ResultWriter(args.results_dir, run_cfg.slug, args.seed)
+        writer.save(result, run_cfg, bench,
+                    model=core if args.save_checkpoint else None, idx_to_sp=idx_to_sp)
+        print(f"[done] {run_cfg.slug} seed{args.seed}: "
+              f"macroAcc {test_metrics['macro_accuracy']:.4f} | "
+              f"HD {test_metrics['mean_hd']:.4f} | top1 {test_metrics['top1_accuracy']:.4f}  "
+              f"-> {writer.metrics_path}")
+
+        # Optional standalone checkpoint (manual use / attention figures).
+        if args.out:
+            ckpt = {
+                "model": core.state_dict(), "ema": ema.state_dict(),
+                "idx_to_sp": idx_to_sp, "num_classes": num_classes,
+                "run_config": run_cfg.__dict__, "benchmark_config": bench.__dict__,
+                "args": vars(args),
+            }
+            if run_cfg.model_family == "dino":
+                ckpt["model_config"] = ModelConfig(
+                    backbone=run_cfg.backbone, context_levels=run_cfg.context_levels,
+                    attention_depth=run_cfg.attention_depth,
+                    unfreeze_blocks=run_cfg.unfreeze_blocks,
+                ).__dict__
+            torch.save(ckpt, args.out)
+            print(f"  [+] standalone checkpoint -> {args.out}")
 
     if is_dist():
         import torch.distributed as dist
+        # Non-zero ranks wait here while rank 0 runs the final test eval + write,
+        # so all ranks tear down together (avoids an NCCL teardown race).
+        dist.barrier()
         dist.destroy_process_group()
 
 
