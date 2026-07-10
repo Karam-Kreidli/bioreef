@@ -214,12 +214,20 @@ def _train_probe_cached(run_cfg, bench, seed, device, num_classes, idx_to_sp,
     va_f, va_y = fx(val_s, "val")
     te_f, te_y = fx(test_s, "test")
 
-    # Train only the head-side on cached features.
+    # Train only the head-side on cached features. Same optimization regime as the
+    # full loop (EMA + warmup+cosine, best-by-val-HD on EMA weights) so C01 differs
+    # from the panel ONLY in the intended ways (frozen probe, un-augmented).
     criterion = build_loss(run_cfg, sp_counts, idx_to_sp, tree, device)
     head_params = list(model.roi_only_proj.parameters()) + list(model.head.parameters())
     optimizer = optim.AdamW(head_params, lr=run_cfg.lr, weight_decay=0.01)
-    epochs = run_cfg.epochs
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    epochs, warmup = run_cfg.epochs, run_cfg.warmup_epochs
+    if warmup > 0:
+        warm = optim.lr_scheduler.LinearLR(optimizer, 1e-2, 1.0, warmup)
+        cos = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs - warmup)
+        scheduler = optim.lr_scheduler.SequentialLR(optimizer, [warm, cos], [warmup])
+    else:
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    ema = EMA(model, decay=0.999)   # shadows only trainable (head) params
 
     if run_cfg.sampler == "balanced":
         sampler = BalancedDistributedSampler(train_s, num_replicas=1, rank=0, seed=seed)
@@ -241,8 +249,11 @@ def _train_probe_cached(run_cfg, bench, seed, device, num_classes, idx_to_sp,
                 loss = criterion(_probe_head_forward(model, f), y)
             loss.backward()
             optimizer.step()
+            ema.update(model)
         scheduler.step()
 
+        # Validate on EMA weights, like the full loop.
+        backup = ema.apply_to(model)
         val = _evaluate_features(model, va_f, va_y, device, num_classes,
                                  idx_to_sp, tree, sp_counts)
         log(f"[val ep{epoch:02d}] macroAcc {val['macro_accuracy']:.4f} "
@@ -250,6 +261,7 @@ def _train_probe_cached(run_cfg, bench, seed, device, num_classes, idx_to_sp,
         if val["mean_hd"] < best_hd:
             best_hd, best_val = val["mean_hd"], val
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+        ema.restore(model, backup)
 
     if best_state is not None:
         model.load_state_dict(best_state)

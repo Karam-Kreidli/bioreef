@@ -25,7 +25,13 @@ class CBFocalLoss(nn.Module):
         self.gamma = gamma
 
     def forward(self, inputs, targets):
-        ce_loss = F.cross_entropy(inputs, targets, reduction="none", weight=self.weights)
-        pt = torch.exp(-ce_loss)
-        focal_loss = (1 - pt) ** self.gamma * ce_loss
+        # Focal modulation must use the UNWEIGHTED prob of the true class: pt is
+        # softmax(inputs)[target], so (1-pt)^gamma reflects true confidence. The
+        # class-balanced weight is then applied as a scale (Cui et al. 2019).
+        # Computing pt from weighted CE would fold the weight into pt and distort
+        # the focal factor for exactly the rare classes it targets.
+        ce = F.cross_entropy(inputs, targets, reduction="none")   # unweighted
+        pt = torch.exp(-ce)                                        # softmax prob of true class
+        w = self.weights[targets]                                 # per-sample class weight
+        focal_loss = w * (1 - pt) ** self.gamma * ce
         return focal_loss.mean()

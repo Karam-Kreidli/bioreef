@@ -19,7 +19,11 @@ def set_seed(seed: int, deterministic: bool = False):
     bit-reproducible); leave False for the speed/variance trade-off the paper
     uses (variance is captured by running multiple seeds)."""
     random.seed(seed)
-    os.environ["PYTHONHASHSEED"] = str(seed)
+    # NOTE: we deliberately do NOT set os.environ["PYTHONHASHSEED"] here — Python
+    # reads it only at interpreter startup, so setting it at runtime is a no-op and
+    # would falsely imply hash-order determinism. The split is made hash-seed
+    # independent by sorting sets before use (see data/split.py), which is the real
+    # fix; nothing else must depend on hash order.
 
     import numpy as np
     np.random.seed(seed)

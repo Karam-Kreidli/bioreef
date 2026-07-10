@@ -107,10 +107,14 @@ class HSLMLoss(nn.Module):
     def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         """logits (B,S) + targets (B,) -> scalar total loss. Per-level
         components stashed in self.last_components for logging."""
-        # Species term: CB-Focal.
-        ce = F.cross_entropy(logits, targets, weight=self.cb_weights, reduction="none")
+        # Species term: CB-Focal. Focal factor uses the UNWEIGHTED true-class prob
+        # (pt = softmax(logits)[target]); the class-balanced weight is applied as a
+        # scale afterwards (Cui et al. 2019). Folding the weight into pt would
+        # distort the focal modulation for the rare classes it targets.
+        ce = F.cross_entropy(logits, targets, reduction="none")   # unweighted
         pt = torch.exp(-ce)
-        species_loss = ((1.0 - pt) ** self.gamma * ce).mean()
+        w = self.cb_weights[targets]
+        species_loss = (w * (1.0 - pt) ** self.gamma * ce).mean()
 
         # Marginalize species probabilities up the taxonomy.
         p_species = F.softmax(logits, dim=1)
