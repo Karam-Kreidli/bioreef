@@ -74,11 +74,14 @@ class ContextHarvester:
         img = (img - self.IMAGENET_MEAN) / self.IMAGENET_STD
         return torch.from_numpy(img).permute(2, 0, 1)  # (3, H, W)
 
-    def harvest(
+    def harvest_uint8(
         self, frame: np.ndarray, bbox: Tuple[int, int, int, int]
-    ) -> Dict[str, torch.Tensor]:
-        """4-stream harvest for one detection (bbox = x,y,w,h) -> dict of
-        'roi'/'social'/'habitat'/'full_frame' tensors (3, res, res)."""
+    ) -> Dict[str, np.ndarray]:
+        """4-stream harvest -> dict of letterboxed uint8 BGR crops (res,res,3),
+        BEFORE normalization. Cropping uses the bbox on the CLEAN frame, so the
+        fish is correctly centred; augmentation is applied to these crops
+        afterwards (never to the frame before cropping — that would move the fish
+        out of the bbox on flips/rotations)."""
         x, y, w, h = bbox
         cx, cy = x + w // 2, y + h // 2
         frame_area = frame.shape[0] * frame.shape[1]
@@ -95,10 +98,20 @@ class ContextHarvester:
 
             resized = self._letterbox_resize(raw_crop, self.target_res)
             scale_name = {1: "roi", 3: "social", 5: "habitat"}.get(scale, f"context_{scale}x")
-            crops[scale_name] = self._normalize(resized)
+            crops[scale_name] = resized
 
         if self.include_full_frame:
-            full_resized = self._letterbox_resize(frame, self.target_res)
-            crops["full_frame"] = self._normalize(full_resized)
+            crops["full_frame"] = self._letterbox_resize(frame, self.target_res)
 
         return crops
+
+    def normalize_streams(self, crops: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
+        """uint8 BGR crops -> normalized (3,res,res) tensors (ImageNet Z-score)."""
+        return {name: self._normalize(img) for name, img in crops.items()}
+
+    def harvest(
+        self, frame: np.ndarray, bbox: Tuple[int, int, int, int]
+    ) -> Dict[str, torch.Tensor]:
+        """Crop + normalize with NO augmentation (val/test path, and feature
+        caching). For training use harvest_uint8 -> augment -> normalize_streams."""
+        return self.normalize_streams(self.harvest_uint8(frame, bbox))

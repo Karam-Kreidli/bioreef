@@ -31,6 +31,10 @@ class FishCropDataset(Dataset):
             frame = np.ones((1080, 1920, 3), dtype=np.uint8) * 128
         if self.restorer is not None:
             frame = self.restorer(frame)
-        augmented = self.augmentor(frame)
-        streams = self.harvester.harvest(augmented, s["bbox"])
+        # Correct order: crop the CLEAN frame with the bbox (fish centred), THEN
+        # augment the crops. Augmenting the frame first would move the fish out of
+        # its (unchanged) bbox on flips/rotations and crop the wrong region.
+        crops = self.harvester.harvest_uint8(frame, s["bbox"])
+        crops = self.augmentor.transform_streams(crops)   # no-op when is_train=False
+        streams = self.harvester.normalize_streams(crops)
         return {"streams": streams, "label": s["class_idx"], "species": s["species"]}
