@@ -25,6 +25,7 @@ seeds:
 - 1
 - 2
 
-# Frozen backbone + no context -> cache ROI [CLS] once, train only the head
-# (minutes, not hours). Un-augmented; reused across seeds. See loop.probe_cache_eligible.
-cache_features: true
+# NOTE: no feature cache here. A2 is a one-factor ablation of C09 (context off),
+# so it must train with the SAME augmentation as C09 — caching would run it
+# un-augmented, a second difference that confounds the MCEAM ablation. Caching is
+# only for C01 (the un-augmented linear-probe floor).

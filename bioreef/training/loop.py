@@ -30,8 +30,13 @@ from bioreef.eval import evaluate_classification
 def probe_cache_eligible(run_cfg):
     """A run can use the frozen-feature cache iff the backbone is frozen AND there
     is no context module — then the model is (frozen backbone -> trainable head)
-    and the frozen ROI [CLS] is a fixed per-crop input, safe to cache. Covers the
-    linear-probe family (C01/C02/A2/A9). Opt-in via run_cfg.cache_features."""
+    and the frozen ROI [CLS] is a fixed per-crop input, safe to cache.
+
+    Opt-in via run_cfg.cache_features, and used ONLY by C01 (the linear-probe
+    floor), which is un-augmented by protocol. NOT enabled for A2/A9: although
+    they are also context-free, they are one-factor ablations of C09 and must
+    train with the SAME augmentation as C09 — caching forces is_train=False
+    (un-augmented), which would confound the ablation."""
     return (
         getattr(run_cfg, "cache_features", False)
         and run_cfg.model_family == "dino"
