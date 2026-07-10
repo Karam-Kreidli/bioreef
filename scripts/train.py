@@ -1,16 +1,21 @@
 """
-Train the proposed classifier (C09) or any ablation on the OzFish benchmark.
+Train any benchmark config (C01-C09, ablations) on the OzFish benchmark, on one
+GPU or across several via DDP.
 
 The data split is FIXED across all runs (--split_seed, default 0) so every model
 sees the same train/val/test. --seed varies model init + augmentation + sampling
 only — run {0,1,2} for the paper's mean +/- std.
 
-Single GPU:
-    python scripts/train.py --csv frame_metadata.csv --img_dir <frames> --seed 0
-Multi-GPU (DDP):
-    torchrun --nproc_per_node=2 scripts/train.py --csv ... --img_dir ... --seed 0
+--run_id builds the EXACT config run.py uses (any family, incl. the fine-tuned
+timm baselines) — this is the multi-GPU path for the whole panel, so heavy
+compute-bound runs (C03/C05/C07) can be split across GPUs:
 
-Ablations are flags (paper K.2):
+    # single GPU (data paths come from configs/benchmark.yaml)
+    python scripts/train.py --run_id C09 --seed 0
+    # two GPUs (DDP) — halves a compute-bound fine-tune
+    torchrun --nproc_per_node=2 scripts/train.py --run_id C03 --seed 0
+
+Without --run_id the config is assembled from the ablation flags (dino one-offs):
     --backbone dinov2            (A1)
     --context_levels 0           (A2: no MCEAM)   / 1 (A3: ROI-scale)
     --attention_depth 2          (A4)             / 4 (A4b)
@@ -36,7 +41,8 @@ from bioreef.config import BenchmarkConfig, DEFAULT_CONFIG_PATH
 from bioreef.data import (
     split_from_config, get_taxonomy_tree, build_taxonomy_maps, FishCropDataset,
 )
-from bioreef.model import Classifier, ModelConfig, HSLMLoss
+from bioreef.model import build_model, trainable_parameters, ModelConfig, HSLMLoss
+from bioreef.run_config import RunConfig
 from bioreef.training import set_seed, CBFocalLoss, BalancedDistributedSampler, EMA
 from bioreef.eval import evaluate_classification
 
@@ -57,7 +63,17 @@ def parse_args():
     # Reproducibility
     p.add_argument("--seed", type=int, default=0, help="model init / aug / sampler seed")
     p.add_argument("--deterministic", action="store_true")
-    # Model (ablation flags)
+    # Config source: a run id builds the EXACT config run.py uses (any family,
+    # incl. timm) — this is how DDP covers the whole panel. Omit it to assemble a
+    # config from the individual ablation flags below (one-off dino experiments).
+    p.add_argument("--run_id", default=None,
+                   help="build from configs/runs/<id>_*.yaml (e.g. C03, C09); "
+                        "enables DDP for any family. Overrides the model flags below.")
+    # Model (ablation flags — used only when --run_id is not given)
+    p.add_argument("--model_family", default="dino", choices=["dino", "timm"])
+    p.add_argument("--timm_name", default="resnet50", help="timm model id (timm family)")
+    p.add_argument("--no_pretrained", action="store_true",
+                   help="timm: train from scratch instead of ImageNet weights")
     p.add_argument("--backbone", default="dinov3", choices=["dinov3", "dinov2"])
     p.add_argument("--context_levels", type=int, default=3, choices=[0, 1, 3])
     p.add_argument("--attention_depth", type=int, default=1)
@@ -85,6 +101,30 @@ def parse_args():
 
 def is_dist():
     return "RANK" in os.environ and "WORLD_SIZE" in os.environ
+
+
+def build_run_config(args) -> RunConfig:
+    """Resolve the RunConfig this invocation trains. --run_id loads the exact
+    panel config (any family, incl. timm) so DDP matches run.py; without it, the
+    config is assembled from the individual ablation flags (dino one-offs). The
+    optimisation budget always comes from the CLI so --epochs/--batch_size/--lr
+    keep working either way."""
+    if args.run_id:
+        rc = RunConfig.find(args.run_id)
+    else:
+        rc = RunConfig(
+            run_id="adhoc", name="", model_family=args.model_family,
+            backbone=args.backbone, context_levels=args.context_levels,
+            attention_depth=args.attention_depth, unfreeze_blocks=args.unfreeze_blocks,
+            timm_name=args.timm_name, pretrained=not args.no_pretrained,
+            hslm=not args.no_hslm, loss=args.loss, sampler=args.sampler,
+            family_weight=args.family_weight, genus_weight=args.genus_weight,
+            species_weight=args.species_weight,
+        )
+    # CLI optimisation flags always win (train.py owns the training budget).
+    rc.epochs, rc.warmup_epochs = args.epochs, args.warmup_epochs
+    rc.batch_size, rc.lr = args.batch_size, args.lr
+    return rc
 
 
 def main():
@@ -125,11 +165,19 @@ def main():
     if is_main:
         print(f"[data] {num_classes} species | train {len(train_s)} val {len(val_s)}")
 
+    # The RunConfig (from --run_id or the ablation flags) is the single source of
+    # truth for model family, loss, and sampler — so DDP training matches run.py.
+    run_cfg = build_run_config(args)
+    if is_main:
+        print(f"[model] family={run_cfg.model_family} "
+              f"({run_cfg.timm_name if run_cfg.model_family == 'timm' else run_cfg.backbone}) "
+              f"| loss={'hslm' if run_cfg.hslm else run_cfg.loss} | sampler={run_cfg.sampler}")
+
     train_ds = FishCropDataset(train_s, is_train=True)
     val_ds = FishCropDataset(val_s, is_train=False)
 
     # Sampler (ablation A6/A8).
-    if args.sampler == "balanced":
+    if run_cfg.sampler == "balanced":
         train_sampler = BalancedDistributedSampler(
             train_s, num_replicas=world_size, rank=local_rank, seed=args.seed,
         )
@@ -144,36 +192,30 @@ def main():
     val_dl = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False,
                         num_workers=args.num_workers, pin_memory=True)
 
-    # Model.
-    mcfg = ModelConfig(
-        backbone=args.backbone, context_levels=args.context_levels,
-        attention_depth=args.attention_depth, unfreeze_blocks=args.unfreeze_blocks,
-    )
-    model = Classifier(mcfg, num_classes).to(device)
-
-    trainable = []
-    for m in model.trainable_modules():
-        trainable += list(m.parameters())
-    if args.unfreeze_blocks > 0:
-        trainable += [p for p in model.backbone.parameters() if p.requires_grad]
+    model = build_model(run_cfg, num_classes).to(device)
+    trainable = trainable_parameters(model)
 
     if is_dist():
         from torch.nn.parallel import DistributedDataParallel as DDP
+        # find_unused_parameters=True is required for the dino family (the frozen
+        # backbone params get no grad) and is always safe — kept on for every
+        # family so an untested timm backbone with any unused param can't crash a
+        # long unattended run. The overhead is negligible next to the backbone.
         model = DDP(model, device_ids=[local_rank], find_unused_parameters=True)
     core = model.module if is_dist() else model
 
-    # Loss (ablation A5/A7/A8).
-    if not args.no_hslm:
+    # Loss (from run_cfg so --run_id picks the panel's loss; A5/A7/A8 flags).
+    if run_cfg.hslm:
         s2g, s2f, n_gen, n_fam, n_missing = build_taxonomy_maps(idx_to_sp, tree)
         if is_main and n_missing:
             print(f"[hslm] {n_missing}/{num_classes} species missing taxonomy -> __unknown__")
         criterion = HSLMLoss(
             sp_counts, s2g, s2f, n_gen, n_fam,
-            family_weight=args.family_weight, genus_weight=args.genus_weight,
-            species_weight=args.species_weight, beta=args.beta, gamma=args.gamma,
+            family_weight=run_cfg.family_weight, genus_weight=run_cfg.genus_weight,
+            species_weight=run_cfg.species_weight, beta=args.beta, gamma=args.gamma,
             device=device,
         )
-    elif args.loss == "cbfocal":
+    elif run_cfg.loss == "cbfocal":
         criterion = CBFocalLoss(sp_counts, beta=args.beta, gamma=args.gamma, device=device)
     else:
         criterion = nn.CrossEntropyLoss()
@@ -219,15 +261,24 @@ def main():
                   f"top5 {metrics.get('top5_accuracy', 0):.4f}")
             if metrics["mean_hd"] < best_hd:
                 best_hd = metrics["mean_hd"]
-                torch.save({
+                ckpt = {
                     "model": core.state_dict(),
                     "ema": ema.state_dict(),
                     "idx_to_sp": idx_to_sp,
                     "num_classes": num_classes,
-                    "model_config": mcfg.__dict__,
-                    "benchmark_config": bench.__dict__,   # reconstruct the exact split
+                    "run_config": run_cfg.__dict__,        # rebuilds ANY family via factory
+                    "benchmark_config": bench.__dict__,    # reconstruct the exact split
                     "args": vars(args),
-                }, args.out)
+                }
+                # test.py / visualize.py rebuild the dino Classifier from model_config;
+                # keep writing it for that family so those tools work unchanged.
+                if run_cfg.model_family == "dino":
+                    ckpt["model_config"] = ModelConfig(
+                        backbone=run_cfg.backbone, context_levels=run_cfg.context_levels,
+                        attention_depth=run_cfg.attention_depth,
+                        unfreeze_blocks=run_cfg.unfreeze_blocks,
+                    ).__dict__
+                torch.save(ckpt, args.out)
                 print(f"  [+] best HD {best_hd:.4f} -> {args.out}")
 
     if is_dist():
