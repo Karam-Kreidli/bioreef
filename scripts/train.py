@@ -108,6 +108,8 @@ def parse_args():
                    help="also write a standalone best-HD checkpoint to this path")
     p.add_argument("--save_checkpoint", action="store_true",
                    help="save checkpoint.pt inside the results dir too")
+    p.add_argument("--overwrite", action="store_true",
+                   help="re-run even if results/<slug>/seed<N>/metrics.json exists")
     return p.parse_args()
 
 
@@ -166,24 +168,31 @@ def main():
     )
     if not bench.csv_path:
         raise SystemExit("no dataset CSV: set data.csv_path in the config or pass --csv")
-    if is_main:
-        print(f"[config] {bench}")
 
     # Fixed benchmark split (driven by the config's data paths).
     train_s, val_s, test_s, num_classes, idx_to_sp, sp_counts = split_from_config(
         bench.csv_path, bench.img_dir, bench,
     )
     tree = get_taxonomy_tree(bench.csv_path)
-    if is_main:
-        print(f"[data] {num_classes} species | train {len(train_s)} val {len(val_s)}")
 
     # The RunConfig (from --run_id or the ablation flags) is the single source of
     # truth for model family, loss, and sampler — so DDP training matches run.py.
     run_cfg = build_run_config(args)
+
+    # Same banner + skip-check as run.py, so DDP output reads identically.
+    writer = ResultWriter(args.results_dir, run_cfg.slug, args.seed)
+    if writer.already_done() and not args.overwrite:
+        if is_main:
+            print(f"[skip] {run_cfg.slug} seed{args.seed} already done ({writer.metrics_path})")
+        if is_dist():
+            import torch.distributed as dist
+            dist.destroy_process_group()
+        return
     if is_main:
-        print(f"[model] family={run_cfg.model_family} "
-              f"({run_cfg.timm_name if run_cfg.model_family == 'timm' else run_cfg.backbone}) "
-              f"| loss={'hslm' if run_cfg.hslm else run_cfg.loss} | sampler={run_cfg.sampler}")
+        print(f"\n{'='*60}\n[run] {run_cfg.slug}  seed={args.seed}  "
+              f"family={run_cfg.model_family}\n{'='*60}")
+        print(f"[data] {num_classes} species | train {len(train_s)} "
+              f"val {len(val_s)} test {len(test_s)}")
 
     train_ds = FishCropDataset(train_s, is_train=True)
     val_ds = FishCropDataset(val_s, is_train=False)
@@ -254,7 +263,8 @@ def main():
         if hasattr(train_sampler, "set_epoch"):
             train_sampler.set_epoch(epoch)
         model.train()
-        it = tqdm(train_dl, desc=f"Epoch {epoch}/{args.epochs}") if is_main else train_dl
+        desc = f"{run_cfg.slug} s{args.seed} ep{epoch}/{args.epochs}"
+        it = tqdm(train_dl, desc=desc) if is_main else train_dl
         for batch in it:
             streams = {k: v.to(device) for k, v in batch["streams"].items()}
             labels = batch["label"].to(device)
@@ -272,9 +282,8 @@ def main():
         backup = ema.apply_to(core)
         metrics = run_eval(model, val_dl, device, num_classes, idx_to_sp, tree, sp_counts)
         if is_main:
-            print(f"[val {epoch:02d}] macroAcc {metrics['macro_accuracy']:.4f} | "
-                  f"HD {metrics['mean_hd']:.4f} | top1 {metrics['top1_accuracy']:.4f} | "
-                  f"top5 {metrics.get('top5_accuracy', 0):.4f}")
+            print(f"[val ep{epoch:02d}] macroAcc {metrics['macro_accuracy']:.4f} "
+                  f"HD {metrics['mean_hd']:.4f} top1 {metrics['top1_accuracy']:.4f}")
             if metrics["mean_hd"] < best_hd:
                 best_hd, best_val = metrics["mean_hd"], metrics
                 # snapshot the EMA weights of the best epoch (CPU copy)
@@ -294,7 +303,6 @@ def main():
             "model_family": run_cfg.model_family, "seed": args.seed,
             "num_classes": num_classes, "test": test_metrics, "val_best": best_val,
         }
-        writer = ResultWriter(args.results_dir, run_cfg.slug, args.seed)
         writer.save(result, run_cfg, bench,
                     model=core if args.save_checkpoint else None, idx_to_sp=idx_to_sp)
         print(f"[done] {run_cfg.slug} seed{args.seed}: "
