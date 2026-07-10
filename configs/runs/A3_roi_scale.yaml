@@ -1,9 +1,12 @@
-# A3 — context scales 3 -> 1 (ROI-scale only).
+# A3 — single-context-stream ablation: context streams 3 -> 1.
+# context_levels=1 keeps only the FIRST of (social, habitat, full_frame), i.e. the
+# ROI attends to the SOCIAL stream only. NOT "ROI-scale": the ROI is always the
+# query; this ablates how many context streams it attends to.
 # (C09 reference with exactly context_levels changed.)
 run_id: A3
-name: roi_scale
+name: roi_scale        # result-dir name kept stable; see description for meaning
 priority: core
-description: 'C09 with one change: context scales 3 -> 1 (ROI-scale only).'
+description: 'C09 with one change: single context stream (social only) vs all three.'
 model_family: dino
 backbone: dinov3
 context_levels: 1

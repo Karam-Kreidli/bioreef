@@ -137,7 +137,7 @@ multi-GPU (DDP) training.
 | --- | --- |
 | `--backbone dinov2` | A1 — DINOv3 → DINOv2 |
 | `--context_levels 0` | A2 — no MCEAM (head on pooled ROI) |
-| `--context_levels 1` | A3 — ROI-scale only |
+| `--context_levels 1` | A3 — single context stream (social only) |
 | `--attention_depth 2` (or 4) | A4 / A4b — attention depth |
 | `--no_hslm` | A5 — flat softmax |
 | `--sampler random` | A6 — no balanced sampler |

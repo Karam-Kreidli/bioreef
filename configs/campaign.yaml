@@ -24,7 +24,7 @@ runs:
   # --- ablations (K.2) ---
   - A1         # DINOv2 backbone
   - A2         # no MCEAM (context off)
-  - A3         # ROI-scale only
+  - A3         # single context stream (social only)
   - A4         # attention depth 2
   - A4b        # attention depth 4 (optional)
   - A5         # flat softmax (no hierarchy)

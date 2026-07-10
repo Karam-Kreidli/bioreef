@@ -5,7 +5,7 @@ The reference model (paper C09): DINOv3 frozen, MCEAM 1 block / 3 scales, linear
 head. Ablations flip one field:
     A1  backbone="dinov2"
     A2  context_levels=0                 (no MCEAM — head on pooled ROI)
-    A3  context_levels=1                 (ROI-scale only)
+    A3  context_levels=1                 (single context stream: social only)
     A4  attention_depth=2                (A4b: 4)
 """
 
@@ -20,7 +20,9 @@ from .mceam import MCEAM
 @dataclass
 class ModelConfig:
     backbone: str = "dinov3"          # dinov3 | dinov2
-    context_levels: int = 3           # 0=no context, 1=ROI-scale, 3=ROI/social/habitat
+    context_levels: int = 3           # # of context streams the ROI attends to,
+                                      # from (social, habitat, full_frame):
+                                      # 0=none, 1=social only, 3=all three
     attention_depth: int = 1          # cross-attention blocks per stream
     embed_dim: int = 768
     output_dim: int = 256

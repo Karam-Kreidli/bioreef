@@ -23,7 +23,7 @@ Status legend: `[ ]` not started · `[~]` partial · `[x]` all seeds done
 |---|---|---|---|
 | [ ] | A1 | C09 with the backbone swapped to frozen DINOv2-base. Disentangles backbone generation from architecture in the MATANet comparison. | core |
 | [ ] | A2 | context off: MCEAM removed (head on pooled ROI). Keeps HSLM+CB-Focal+balanced. | core |
-| [ ] | A3 | context scales 3 -> 1 (ROI-scale only). | core |
+| [ ] | A3 | single context stream (social only) vs all three. | core |
 | [ ] | A4 | attention depth 1 -> 2 blocks. | core |
 | [ ] | A4b | attention depth 1 -> 4 blocks. | optional |
 | [ ] | A5 | hierarchy off: HSLM -> flat softmax (species-only). | core |
