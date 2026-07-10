@@ -58,6 +58,9 @@ def parse_args():
     p.add_argument("--gpu", default=None,
                    help="GPU to use, e.g. 1 or cuda:1 or cpu (overrides config 'device')")
     p.add_argument("--batch_size", type=int, default=32)
+    p.add_argument("--epochs", type=int, default=None,
+                   help="override the config's epoch count (e.g. a length sweep); "
+                        "omit to use each run's configured epochs")
     p.add_argument("--num_workers", type=int, default=4)
     p.add_argument("--results_dir", default="results")
     p.add_argument("--save_checkpoint", action="store_true")
@@ -108,6 +111,9 @@ def execute_run(run_cfg, bench, seed, args, device):
     if writer.already_done() and not args.overwrite:
         print(f"[skip] {run_cfg.slug} seed{seed} already done ({writer.metrics_path})")
         return
+
+    if args.epochs is not None:
+        run_cfg.epochs = args.epochs   # length sweep / diagnostic override
 
     print(f"\n{'='*60}\n[run] {run_cfg.slug}  seed={seed}  family={run_cfg.model_family}\n{'='*60}")
     set_seed(seed)
