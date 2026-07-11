@@ -98,7 +98,7 @@ def train_and_evaluate(run_cfg, bench, seed, device, batch_size=32,
             train_s, val_s, test_s, batch_size, num_workers, log,
         )
 
-    train_ds = FishCropDataset(train_s, is_train=True)
+    train_ds = FishCropDataset(train_s, is_train=run_cfg.augment)  # augment off = clean crops
     val_ds = FishCropDataset(val_s, is_train=False)
     test_ds = FishCropDataset(test_s, is_train=False)
 

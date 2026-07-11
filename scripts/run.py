@@ -61,6 +61,9 @@ def parse_args():
     p.add_argument("--epochs", type=int, default=None,
                    help="override the config's epoch count (e.g. a length sweep); "
                         "omit to use each run's configured epochs")
+    p.add_argument("--no_augment", action="store_true",
+                   help="disable marine augmentation for this run (clean crops); "
+                        "diagnostic / augmentation ablation on frozen backbones")
     p.add_argument("--num_workers", type=int, default=4)
     p.add_argument("--results_dir", default="results")
     p.add_argument("--save_checkpoint", action="store_true")
@@ -114,6 +117,8 @@ def execute_run(run_cfg, bench, seed, args, device):
 
     if args.epochs is not None:
         run_cfg.epochs = args.epochs   # length sweep / diagnostic override
+    if args.no_augment:
+        run_cfg.augment = False        # augmentation ablation / diagnostic
 
     print(f"\n{'='*60}\n[run] {run_cfg.slug}  seed={seed}  family={run_cfg.model_family}\n{'='*60}")
     set_seed(seed)

@@ -64,6 +64,12 @@ class RunConfig:
     # cache is un-augmented (standard linear-probe protocol).
     cache_features: bool = False
 
+    # Marine training augmentation on/off. On (default) for the trained models.
+    # Off makes the run train on clean crops — matches the un-augmented linear
+    # probe, and is the augmentation ablation (strong aug can hurt a FROZEN
+    # backbone by widening the train/test feature-distribution gap).
+    augment: bool = True
+
     # Seeds this config is meant to run at (the campaign plan).
     seeds: List[int] = field(default_factory=lambda: [0, 1, 2])
 

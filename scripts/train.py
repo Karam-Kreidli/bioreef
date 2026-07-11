@@ -194,7 +194,7 @@ def main():
         print(f"[data] {num_classes} species | train {len(train_s)} "
               f"val {len(val_s)} test {len(test_s)}")
 
-    train_ds = FishCropDataset(train_s, is_train=True)
+    train_ds = FishCropDataset(train_s, is_train=run_cfg.augment)  # augment off = clean crops
     val_ds = FishCropDataset(val_s, is_train=False)
     # Test set is scored once at the end, on rank 0 only.
     test_dl = None
