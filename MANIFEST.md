@@ -30,12 +30,15 @@ Status legend: `[ ]` not started · `[~]` partial · `[x]` all seeds done
 | [ ] | A6 | sampler balanced -> random. | core |
 | [ ] | A7 | species loss CB-Focal -> plain CE (HSLM off so the species term is CE). | core |
 | [ ] | A8 | all long-tail handling off: (CB-Focal+balanced) -> (CE+random). | core |
-| [ ] | A9 | stream contribution: all context -> ROI-only anchor (context_levels 0). | core |
+| ~~A9~~ | ~~stream contribution: ROI-only anchor~~ | MERGED into A2 (see Notes) |
 
 ## Notes
 
-- **A2 and A9 are the same model** (context off / ROI-only anchor); both ids are
-  kept for traceability to the paper's K.2 table but produce identical results.
+- **A9 is merged into A2.** They are mechanically identical (both context_levels=0,
+  HSLM, CB-Focal, balanced -> same model), so the paper uses ONE row: "A2: ROI-only,
+  no MCEAM." A9 is removed from the campaign; its config file is retained only for
+  traceability to the paper's original K.2 numbering. The ROI-only stream-contribution
+  analysis is A2.
 - **C08 MATANet** runs from the official repo, not `run.py` — see
   `configs/runs/C08_matanet.yaml` and `bioreef/model/factory.py::build_matanet`.
 - The attention-mass readout (context-stream analysis) is computed from C09's
