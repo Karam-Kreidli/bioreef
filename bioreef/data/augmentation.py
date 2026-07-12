@@ -17,20 +17,23 @@ logger = logging.getLogger("bioreef.data.augmentation")
 
 class MarineAugmentor:
     """
-    Underwater-domain augmentation: geometric (flips/full rotation), turbidity
-    noise, marine snow, motion blur, and photometric jitter.
+    Underwater-domain augmentation, kept LIGHT because the backbone is frozen —
+    strong geometric distortion (esp. full rotation) pushes crops off the frozen
+    feature manifold and hurts accuracy (measured: 0-360 rotation cost ~20 top1
+    on DINOv2). Defaults: h-flip, small +/-30 rotation, mild noise/snow/blur, mild
+    photometric; vertical flip off (fish are rarely upside-down).
     """
 
     def __init__(
         self,
         horizontal_flip_prob: float = 0.5,
-        vertical_flip_prob: float = 0.3,
-        rotation_limit: int = 360,
-        noise_var_limit: Tuple[float, float] = (10.0, 50.0),
-        marine_snow_prob: float = 0.3,
+        vertical_flip_prob: float = 0.0,     # off: fish are rarely upside-down
+        rotation_limit: int = 30,            # SYMMETRIC: rotate in [-30, +30] deg
+        noise_var_limit: Tuple[float, float] = (5.0, 15.0),
+        marine_snow_prob: float = 0.1,
         marine_snow_density: float = 0.005,
         marine_snow_opacity: float = 0.4,
-        motion_blur_prob: float = 0.2,
+        motion_blur_prob: float = 0.1,
         motion_blur_limit: int = 7,
         brightness_limit: float = 0.1,
         contrast_limit: float = 0.1,
@@ -57,7 +60,7 @@ class MarineAugmentor:
         if np.random.random() < self.vertical_flip_prob:
             image = np.flipud(image).copy()
         if self.rotation_limit > 0:
-            angle = np.random.uniform(0, self.rotation_limit)
+            angle = np.random.uniform(-self.rotation_limit, self.rotation_limit)
             h, w = image.shape[:2]
             M = cv2.getRotationMatrix2D((w // 2, h // 2), angle, 1.0)
             image = cv2.warpAffine(image, M, (w, h), borderMode=cv2.BORDER_REFLECT)
@@ -112,7 +115,7 @@ class MarineAugmentor:
         return {
             "hflip": np.random.random() < self.horizontal_flip_prob,
             "vflip": np.random.random() < self.vertical_flip_prob,
-            "angle": (np.random.uniform(0, self.rotation_limit)
+            "angle": (np.random.uniform(-self.rotation_limit, self.rotation_limit)
                       if self.rotation_limit > 0 else 0.0),
         }
 

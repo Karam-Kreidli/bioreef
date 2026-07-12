@@ -28,17 +28,19 @@ from bioreef.eval import evaluate_classification
 
 
 def probe_cache_eligible(run_cfg):
-    """A run can use the frozen-feature cache iff the backbone is frozen AND there
-    is no context module — then the model is (frozen backbone -> trainable head)
-    and the frozen ROI [CLS] is a fixed per-crop input, safe to cache.
+    """A run can use the frozen-feature cache iff the backbone is frozen, there is
+    no context module, AND augmentation is OFF — then the ROI [CLS] is a fixed
+    per-crop input, safe to compute once and reuse across epochs/seeds.
 
-    Opt-in via run_cfg.cache_features, and used ONLY by C01 (the linear-probe
-    floor), which is un-augmented by protocol. NOT enabled for A2/A9: although
-    they are also context-free, they are one-factor ablations of C09 and must
-    train with the SAME augmentation as C09 — caching forces is_train=False
-    (un-augmented), which would confound the ablation."""
+    The augment=False requirement is a HARD safety condition: with augmentation on,
+    the crop (and thus its features) changes every epoch, so a cache would silently
+    serve stale features. The current panel uses light augmentation on every run
+    (incl. the probe), so nothing is cache-eligible by default; caching remains
+    available only for a deliberately un-augmented probe (cache_features + augment
+    both set false)."""
     return (
         getattr(run_cfg, "cache_features", False)
+        and not getattr(run_cfg, "augment", True)     # HARD: no cache if augmenting
         and run_cfg.model_family == "dino"
         and run_cfg.context_levels == 0
         and run_cfg.unfreeze_blocks == 0
