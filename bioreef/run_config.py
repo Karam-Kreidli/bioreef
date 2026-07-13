@@ -79,6 +79,25 @@ class RunConfig:
         base = self.run_id or "run"
         return f"{base}_{self.name}" if self.name else base
 
+    def to_serializable_dict(self) -> dict:
+        """Full config with fields that are INERT for this run's model_family
+        dropped, so the reviewer-facing run_config.yaml records only what actually
+        shaped the run. The timm baseline (timm_name/pretrained) and the dino
+        family (backbone/context/attention/unfreeze) are mutually exclusive — a
+        dino run ignores timm_name entirely, so emitting 'timm_name: resnet50' in
+        a DINOv3 config is misleading provenance. Keep everything for matanet (it
+        may consult either)."""
+        d = dict(self.__dict__)
+        dino_only = ("backbone", "context_levels", "attention_depth", "unfreeze_blocks")
+        timm_only = ("timm_name", "pretrained")
+        if self.model_family == "dino":
+            for k in timm_only:
+                d.pop(k, None)
+        elif self.model_family == "timm":
+            for k in dino_only:
+                d.pop(k, None)
+        return d
+
     @classmethod
     def from_yaml(cls, path: str) -> "RunConfig":
         import yaml

@@ -101,7 +101,7 @@ class ResultWriter:
         os.makedirs(self.dir, exist_ok=True)
         with open(self.metrics_path, "w", encoding="utf-8") as f:
             json.dump(result, f, indent=2)
-        self._yaml(run_cfg.__dict__, "run_config.yaml")
+        self._yaml(run_cfg.to_serializable_dict(), "run_config.yaml")
         self._yaml(bench.__dict__, "benchmark_config.yaml")
         if model is not None:
             torch.save({"model": model.state_dict(), "idx_to_sp": idx_to_sp,
