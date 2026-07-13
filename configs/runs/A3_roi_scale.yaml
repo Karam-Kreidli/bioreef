@@ -6,7 +6,7 @@
 run_id: A3
 name: roi_scale        # result-dir name kept stable; see description for meaning
 priority: core
-description: 'C09 with one change: single context stream (social only) vs all three.'
+description: 'C09 reference with one change: single context stream (social only) vs all three.'
 model_family: dino
 backbone: dinov3
 context_levels: 1
@@ -14,7 +14,7 @@ attention_depth: 1
 unfreeze_blocks: 0
 hslm: true
 loss: cbfocal
-sampler: balanced
+sampler: random            # matches the C09 reference (random sampler)
 family_weight: 3.0
 genus_weight: 2.0
 species_weight: 1.0

@@ -3,7 +3,7 @@
 run_id: A5
 name: flat_softmax
 priority: core
-description: 'C09 with one change: hierarchy off: HSLM -> flat softmax (species-only).'
+description: 'C09 reference with one change: hierarchy off: HSLM -> flat softmax (species-only).'
 model_family: dino
 backbone: dinov3
 context_levels: 3
@@ -11,7 +11,7 @@ attention_depth: 1
 unfreeze_blocks: 0
 hslm: false
 loss: cbfocal
-sampler: balanced
+sampler: random            # matches the C09 reference (random sampler)
 family_weight: 3.0
 genus_weight: 2.0
 species_weight: 1.0

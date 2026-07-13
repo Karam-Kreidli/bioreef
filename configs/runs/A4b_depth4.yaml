@@ -3,7 +3,7 @@
 run_id: A4b
 name: depth4
 priority: optional
-description: 'C09 with one change: attention depth 1 -> 4 blocks.'
+description: 'C09 reference with one change: attention depth 1 -> 4 blocks.'
 model_family: dino
 backbone: dinov3
 context_levels: 3
@@ -11,7 +11,7 @@ attention_depth: 4
 unfreeze_blocks: 0
 hslm: true
 loss: cbfocal
-sampler: balanced
+sampler: random            # matches the C09 reference (random sampler)
 family_weight: 3.0
 genus_weight: 2.0
 species_weight: 1.0

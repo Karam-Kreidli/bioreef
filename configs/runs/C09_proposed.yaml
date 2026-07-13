@@ -1,13 +1,16 @@
-# C09 — Proposed model (reference R). THE reference config every ablation edits.
-#   frozen DINOv3 . MCEAM 1 block / 3 scales . HSLM . CB-Focal + balanced sampler
+# C09 — THE PROPOSED REFERENCE. frozen DINOv3 . MCEAM 1 block / 3 scales . HSLM .
+#   CB-Focal + RANDOM sampler. Every ablation (A1-A5, A7) changes exactly one field
+#   of THIS config; A6 is the balanced-sampler ablation of it (sampler random ->
+#   balanced). Random sampling wins on all three headline metrics (macroAcc, HD,
+#   top1) over balanced on this long-tailed benchmark, so it is the reference.
 run_id: C09
 name: proposed
 priority: core
 description: >
   The proposed model: frozen DINOv3 ViT-B/16, MCEAM single-block cross-attention
   over ROI/social/habitat context, marginalization HSLM hierarchy loss, CB-Focal
-  species term + class-balanced sampler. All ablations (A1-A9) change exactly one
-  field of this config.
+  species term, RANDOM sampler. All ablations (A1-A7) change exactly one field of
+  this config.
 
 model_family: dino
 backbone: dinov3
@@ -17,7 +20,7 @@ unfreeze_blocks: 0         # fully frozen backbone
 
 hslm: true                 # marginalization hierarchy loss
 loss: cbfocal              # (species term inside HSLM)
-sampler: balanced
+sampler: random            # <- the winning choice; A6 ablates this to balanced
 family_weight: 3.0
 genus_weight: 2.0
 species_weight: 1.0

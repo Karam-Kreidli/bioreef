@@ -1,10 +1,10 @@
-# A2 — context off: MCEAM removed (head on pooled ROI). Keeps HSLM+CB-Focal+balanced.
+# A2 — context off: MCEAM removed (head on pooled ROI). Keeps HSLM+CB-Focal+random.
 # (C09 reference with exactly context_levels changed.)
 run_id: A2
 name: no_context
 priority: core
-description: 'C09 with one change: context off: MCEAM removed (head on pooled ROI).
-  Keeps HSLM+CB-Focal+balanced.'
+description: 'C09 reference with one change: context off: MCEAM removed (head on
+  pooled ROI). Keeps HSLM+CB-Focal+random sampler.'
 model_family: dino
 backbone: dinov3
 context_levels: 0
@@ -12,7 +12,7 @@ attention_depth: 1
 unfreeze_blocks: 0
 hslm: true
 loss: cbfocal
-sampler: balanced
+sampler: random
 family_weight: 3.0
 genus_weight: 2.0
 species_weight: 1.0
@@ -25,7 +25,7 @@ seeds:
 - 1
 - 2
 
-# NOTE: no feature cache here. A2 is a one-factor ablation of C09 (context off),
-# so it must train with the SAME augmentation as C09 — caching would run it
-# un-augmented, a second difference that confounds the MCEAM ablation. Caching is
-# only for C01 (the un-augmented linear-probe floor).
+# NOTE: no feature cache here. A2 is a one-factor ablation of the C09 reference
+# (context off), so it must train with the SAME augmentation as C09 — caching would
+# run it un-augmented, a second difference that confounds the MCEAM ablation.
+# Caching is only for C01 (the un-augmented linear-probe floor).

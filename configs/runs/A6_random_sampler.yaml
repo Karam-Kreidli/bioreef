@@ -1,9 +1,12 @@
-# A6 — sampler balanced -> random.
-# (C09 reference with exactly sampler changed.)
+# A6 — sampler ablation: random -> balanced. (C09 reference with exactly sampler
+# changed.) On this long-tailed benchmark balanced sampling UNDERPERFORMS the
+# random-sampler reference (C09) on macroAcc, HD and top1 — reported as the
+# sampler-choice finding. NOTE: filename kept as A6_random_sampler.yaml for git
+# history; the run's name/slug is A6_balanced_sampler (it IS the balanced run).
 run_id: A6
-name: random_sampler
+name: balanced_sampler
 priority: core
-description: 'C09 with one change: sampler balanced -> random.'
+description: 'C09 reference with one change: sampler random -> balanced.'
 model_family: dino
 backbone: dinov3
 context_levels: 3
@@ -11,7 +14,7 @@ attention_depth: 1
 unfreeze_blocks: 0
 hslm: true
 loss: cbfocal
-sampler: random
+sampler: balanced
 family_weight: 3.0
 genus_weight: 2.0
 species_weight: 1.0

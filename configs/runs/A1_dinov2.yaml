@@ -1,19 +1,19 @@
-# A1 — Backbone: DINOv3 -> DINOv2. (C09 with backbone changed.)
+# A1 — Backbone: DINOv3 -> DINOv2. (C09 reference with backbone changed.)
 run_id: A1
 name: dinov2
 priority: core
-description: C09 with the backbone swapped to frozen DINOv2-base. Disentangles
-  backbone generation from architecture in the MATANet comparison.
+description: C09 reference with the backbone swapped to frozen DINOv2-base.
+  Disentangles backbone generation from architecture in the MATANet comparison.
 
 model_family: dino
-backbone: dinov2           # <- the only change vs C09
+backbone: dinov2           # <- the only change vs the C09 reference
 context_levels: 3
 attention_depth: 1
 unfreeze_blocks: 0
 
 hslm: true
 loss: cbfocal
-sampler: balanced
+sampler: random            # matches the C09 reference (random sampler)
 family_weight: 3.0
 genus_weight: 2.0
 species_weight: 1.0

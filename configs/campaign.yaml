@@ -18,7 +18,7 @@ runs:
   - C03        # ResNet-50
   - C05        # ConvNeXt-T
   - C07        # Swin-B
-  - C09        # proposed model (reference)
+  - C09        # proposed reference (random sampler)
   # C08 MATANet runs from the official repo, not here — see configs/runs/C08_matanet.yaml
 
   # --- ablations (K.2) ---
@@ -28,7 +28,7 @@ runs:
   - A4         # attention depth 2
   - A4b        # attention depth 4 (optional)
   - A5         # flat softmax (no hierarchy)
-  - A6         # random sampler
+  - A6         # sampler ablation: random -> balanced (balanced-sampler variant)
   - A7         # plain CE species loss
   - A8         # no long-tail handling
   # A9 removed: mechanically identical to A2 (context_levels=0). A2 is the single
