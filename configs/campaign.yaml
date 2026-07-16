@@ -34,7 +34,9 @@ runs:
   # A9 removed: mechanically identical to A2 (context_levels=0). A2 is the single
   # no-context / ROI-only row; the config file is kept only for traceability.
 
-  # --- deferred Optional tier (K.1) — uncomment if compute allows ---
+  # --- Optional tier (K.1) — breadth for the fine-tuned baselines ---
+  - C04        # EfficientNetV2-S fine-tuned
+  - C06        # ViT-B/16 fine-tuned — the frozen-vs-fine-tuned counterpart to C09
+  # C02 still deferred: a DINOv2 linear probe is redundant with ablation A1,
+  # which already carries the DINOv2-vs-DINOv3 comparison (K.1 note).
   # - C02      # DINOv2 linear probe (redundant with A1)
-  # - C04      # EfficientNetV2-S
-  # - C06      # ViT-B

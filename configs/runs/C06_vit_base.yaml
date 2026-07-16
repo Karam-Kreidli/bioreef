@@ -1,0 +1,32 @@
+# C06 — ViT-B/16 fine-tuned (plain transformer). Single ROI crop, flat CE.
+#
+# The direct fine-tuned counterpart to the frozen DINOv3 ViT-B/16 of C09/C01:
+# SAME architecture and scale, only the backbone is trained. So C06-vs-C09
+# isolates frozen-vs-fine-tuned WITHIN one architecture family — the cleanest
+# read on the frozen-feature question, without MATANet's confounds (C08).
+run_id: C06
+name: vit_base
+priority: optional
+description: >
+  Plain transformer baseline: ImageNet-pretrained ViT-B/16 fine-tuned end-to-end
+  on the ROI crop. Flat CE, random sampler. Matches the frozen DINOv3 ViT-B/16
+  backbone in scale, so it isolates fine-tuned vs frozen within one architecture.
+
+model_family: timm
+timm_name: vit_base_patch16_224
+pretrained: true
+
+hslm: false
+loss: ce
+sampler: random
+
+epochs: 60
+warmup_epochs: 3
+# 32 — the panel-wide batch size (fairness: same budget/protocol as C03/C05/C07).
+# On the 8 GB benchmark GPUs this fits on a headless card; it only OOMs if the run
+# shares a card with the desktop/X server, so pin it with --gpu instead of shrinking
+# the batch. If ViT-B genuinely will not fit, the paper's stated fallback is ViT-S
+# (timm_name: vit_small_patch16_224) — record the swap if used.
+batch_size: 32
+lr: 0.0001
+seeds: [0, 1, 2]
