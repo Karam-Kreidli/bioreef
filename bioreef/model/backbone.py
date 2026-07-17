@@ -81,21 +81,45 @@ class ViTBackbone(nn.Module):
         patch_tokens = hidden[:, 1 + self.num_register_tokens:]
         return cls_token, patch_tokens
 
+    # Where the transformer-block ModuleList lives, per HF backbone layout:
+    #   DINOv3: vit.model.layer     (encoder submodule is named `model`)
+    #   DINOv2: vit.encoder.layer
+    #   timm-style ViT: vit.blocks
+    # Order matters: DINOv3 also has a `.blocks`-free layout, so probe the most
+    # specific paths first. If none match we MUST fail — silently unfreezing the
+    # whole network turns a last-N-block ablation into a full fine-tune (a
+    # different experiment), which is exactly the bug this replaces.
+    _BLOCK_PATHS = (("model", "layer"), ("encoder", "layer"), ("blocks",))
+
+    def _find_blocks(self):
+        for path in self._BLOCK_PATHS:
+            obj = self.vit
+            for attr in path:
+                obj = getattr(obj, attr, None)
+                if obj is None:
+                    break
+            else:
+                import torch.nn as nn
+                if isinstance(obj, nn.ModuleList) and len(obj) > 0:
+                    return obj
+        return None
+
     def unfreeze_blocks(self, n: int = 2):
         """Domain adaptation: unfreeze the final N transformer blocks (+ final
         layer-norm). Optional last-N-block path mentioned in the paper (4.1)."""
-        if hasattr(self.vit, "encoder") and hasattr(self.vit.encoder, "layer"):
-            blocks = self.vit.encoder.layer
-        elif hasattr(self.vit, "blocks"):
-            blocks = self.vit.blocks
-        else:
-            logger.warning("Could not map ViT blocks; unfreezing entire network.")
-            for param in self.vit.parameters():
-                param.requires_grad = True
-            self.vit.train()
-            return
+        blocks = self._find_blocks()
+        if blocks is None:
+            raise RuntimeError(
+                f"unfreeze_blocks({n}): could not locate the transformer-block "
+                f"ModuleList on backbone '{self.pretrained_model_name}'. Tried "
+                f"{self._BLOCK_PATHS}. Refusing to unfreeze the whole network "
+                f"silently — add this backbone's block path to _BLOCK_PATHS."
+            )
 
         total = len(blocks)
+        if not 0 < n <= total:
+            raise ValueError(f"unfreeze_blocks: n={n} out of range for {total} blocks")
+
         self.vit.train()
         for i, block in enumerate(blocks):
             if i >= total - n:
@@ -107,7 +131,9 @@ class ViTBackbone(nn.Module):
             for param in layernorm.parameters():
                 param.requires_grad = True
 
-        logger.info(f"Unfroze final {n}/{total} transformer blocks.")
+        n_tr = sum(p.numel() for p in self.vit.parameters() if p.requires_grad)
+        logger.info(f"Unfroze final {n}/{total} transformer blocks "
+                    f"({n_tr:,} backbone params now trainable).")
 
     def forward(
         self, streams: Dict[str, torch.Tensor]
