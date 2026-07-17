@@ -1,0 +1,36 @@
+# A11 — adaptation depth: frozen -> last 4 blocks unfrozen.
+# (C09 reference with exactly unfreeze_blocks changed.)
+#
+# The second point on the frozen->fine-tuned frontier (see A10). Together
+# C09 (0) -> A10 (2) -> A11 (4) -> C06/C07 (all) trace how accuracy scales with
+# adaptation depth, and whether it saturates before full fine-tuning.
+#
+# unfreeze_blocks=4 unfreezes the final 4 of 12 transformer blocks (+ final
+# layernorm): ~28.4M of 86.6M backbone params become trainable (verified).
+run_id: A11
+name: unfreeze4
+priority: optional
+description: 'C09 reference with one change: backbone frozen -> last 4 blocks unfrozen.'
+model_family: dino
+backbone: dinov3
+context_levels: 3
+attention_depth: 1
+unfreeze_blocks: 4         # <- the only change vs the C09 reference
+hslm: true
+loss: cbfocal
+sampler: random
+family_weight: 3.0
+genus_weight: 2.0
+species_weight: 1.0
+epochs: 60
+warmup_epochs: 3
+batch_size: 32
+lr: 0.0001
+seeds:
+- 0
+- 1
+- 2
+
+# NOTE: heavier than A10 (twice the unfrozen blocks). Same guidance: headless GPU
+# via --gpu; if it OOMs at batch 32, prefer running A10 first and treat A11 as the
+# optional extension of the frontier.

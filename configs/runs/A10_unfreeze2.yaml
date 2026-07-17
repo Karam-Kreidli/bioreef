@@ -1,0 +1,38 @@
+# A10 — adaptation depth: frozen -> last 2 blocks unfrozen.
+# (C09 reference with exactly unfreeze_blocks changed.)
+#
+# The frozen->fine-tuned frontier. The panel is otherwise binary: fully frozen
+# (C09, unfreeze_blocks 0) vs fully fine-tuned (C05/C06/C07). A10/A11 fill in the
+# middle, quantifying HOW MUCH backbone adaptation buys how much accuracy — the
+# "optional last-N-block adaptation path" the paper anticipates (4.1).
+#
+# unfreeze_blocks=2 unfreezes the final 2 of 12 transformer blocks (+ final
+# layernorm): ~14.2M of 86.6M backbone params become trainable (verified).
+run_id: A10
+name: unfreeze2
+priority: core
+description: 'C09 reference with one change: backbone frozen -> last 2 blocks unfrozen.'
+model_family: dino
+backbone: dinov3
+context_levels: 3
+attention_depth: 1
+unfreeze_blocks: 2         # <- the only change vs the C09 reference
+hslm: true
+loss: cbfocal
+sampler: random
+family_weight: 3.0
+genus_weight: 2.0
+species_weight: 1.0
+epochs: 60
+warmup_epochs: 3
+batch_size: 32
+lr: 0.0001
+seeds:
+- 0
+- 1
+- 2
+
+# NOTE: unfreezing backprops through the last N blocks, so memory is well above
+# C09's. On the 8 GB benchmark GPUs run this on a headless card (--gpu), not the
+# one hosting the desktop/X server; drop to --batch_size 16 only if it truly OOMs
+# (and record the change, since it departs from the panel-wide batch 32).

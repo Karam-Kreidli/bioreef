@@ -31,6 +31,8 @@ runs:
   - A6         # sampler ablation: random -> balanced (balanced-sampler variant)
   - A7         # plain CE species loss
   - A8         # no long-tail handling
+  - A10        # adaptation: last 2 backbone blocks unfrozen (frozen->finetuned frontier)
+  - A11        # adaptation: last 4 backbone blocks unfrozen (optional extension)
   # A9 removed: mechanically identical to A2 (context_levels=0). A2 is the single
   # no-context / ROI-only row; the config file is kept only for traceability.
 
