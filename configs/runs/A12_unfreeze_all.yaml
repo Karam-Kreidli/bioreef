@@ -1,0 +1,46 @@
+# A12 — adaptation depth: all 12 transformer blocks unfrozen (full fine-tune).
+# (C09 reference with exactly unfreeze_blocks changed.)
+#
+# The HONEST endpoint of the frozen->fine-tuned frontier (C09 0 -> A10 2 ->
+# A11 4 -> A12 12). Unlike C06 (which also swaps DINOv3->ImageNet ViT-B, MCEAM
+# ->linear head, and drops context/HSLM), A12 is C09 with ONLY the block count
+# changed — so the sweep C09/A10/A11/A12 is a clean one-variable curve, and the
+# "last-2-blocks recover X% of the gap" percentages are computed against a real
+# same-model endpoint rather than against the confounded C06.
+#
+# unfreeze_blocks=12 unfreezes all 12 of 12 transformer blocks (+ final norm):
+# ~85M of 86.6M backbone params trainable. NOTE: patch embeddings and pre-block
+# layers stay frozen (this method unfreezes transformer blocks + final norm), so
+# A12 is "all transformer blocks" full-FT, marginally less than a timm-style
+# train-everything full-FT (C06). Documented so the small difference is not a
+# hidden confound.
+run_id: A12
+name: unfreeze_all
+priority: optional
+description: 'C09 reference with one change: backbone frozen -> all 12 blocks unfrozen (full fine-tune).'
+model_family: dino
+backbone: dinov3
+context_levels: 3
+attention_depth: 1
+unfreeze_blocks: 12        # <- the only change vs the C09 reference (all blocks)
+hslm: true
+loss: cbfocal
+sampler: random
+family_weight: 3.0
+genus_weight: 2.0
+species_weight: 1.0
+epochs: 60
+warmup_epochs: 3
+batch_size: 32
+lr: 0.0001
+seeds:
+- 0
+- 1
+- 2
+
+# NOTE: heaviest dino run in the panel — backprop through the WHOLE backbone plus
+# MCEAM's multi-stream forward. On the 8 GB benchmark GPUs this is the most likely
+# to OOM; run on the headless card (--gpu), and if it will not fit at batch 32,
+# --batch_size 16 (record the departure). lr 1e-4 is inherited from the panel; it
+# is hot for full-backbone fine-tuning — if A12 trains unstably vs A10/A11, a lower
+# backbone lr is the first thing to try (but that departs from the one-field rule).
