@@ -13,12 +13,14 @@ git clone https://github.com/Karam-Kreidli/bioreef.git ~/bioreef-classify
 # rsync, not tar+scp: needs no second copy on the VM's disk (the crops are
 # already-compressed PNGs, so tar.gz saves almost nothing) and it RESUMES if
 # the connection drops — which matters at ~76k files.
-# Paths mirror the VM layout: data lives INSIDE the package dir.
+# Paths mirror the VM layout: data/ at the repo ROOT (not inside bioreef/,
+# which is the Python package). Trailing slash on the source matters —
+# "frames/" copies the CONTENTS; "frames" would nest it as frames/frames/.
 cd ~/bioreef-classify        # or wherever the repo is on the VM
-rsync -avP bioreef/data/frames/ \
-  oelmutasim@44.210.222.21:~/bioreef-classify/bioreef/data/frames/
-rsync -avP bioreef/data/metadata/ \
-  oelmutasim@44.210.222.21:~/bioreef-classify/bioreef/data/metadata/
+rsync -avP data/frames/ \
+  oelmutasim@44.210.222.21:~/bioreef-classify/data/frames/
+rsync -avP data/metadata/ \
+  oelmutasim@44.210.222.21:~/bioreef-classify/data/metadata/
 
 # --- 3. back on the login node ------------------------------------------
 cd ~/bioreef-classify

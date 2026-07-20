@@ -124,9 +124,10 @@ PY
 
 # --- 5. dataset ------------------------------------------------------------
 say "Dataset"
-# Canonical layout (matches the VM): data lives inside the package dir.
-CSV_PATH="$WORKDIR/bioreef/data/metadata/frame_metadata.csv"
-IMG_PATH="$WORKDIR/bioreef/data/frames"
+# Canonical layout (matches the VM): data/ at the REPO ROOT — not inside the
+# bioreef/ package, which holds code and stays tracked by git.
+CSV_PATH="$WORKDIR/data/metadata/frame_metadata.csv"
+IMG_PATH="$WORKDIR/data/frames"
 mkdir -p "$(dirname "$CSV_PATH")" "$IMG_PATH"
 
 if [ ! -f "$CSV_PATH" ] || [ -z "$(ls -A "$IMG_PATH" 2>/dev/null)" ]; then
@@ -143,18 +144,18 @@ if [ ! -f "$CSV_PATH" ] || [ -z "$(ls -A "$IMG_PATH" 2>/dev/null)" ]; then
   A) rsync the directories across — no extra disk needed on the VM, and it
      RESUMES if the connection drops (best for ~76k files). Run FROM the repo
      root on the VM:
-       rsync -avP bioreef/data/frames/ \\
+       rsync -avP data/frames/ \\
          oelmutasim@44.210.222.21:$IMG_PATH/
-       rsync -avP bioreef/data/metadata/ \\
+       rsync -avP data/metadata/ \\
          oelmutasim@44.210.222.21:$(dirname "$CSV_PATH")/
 
   B) stream a tar over ssh — no temp file on the VM either, but it restarts
      from zero if it breaks:
-       tar cf - bioreef/data/frames bioreef/data/metadata | \\
+       tar cf - data/frames data/metadata | \\
          ssh oelmutasim@44.210.222.21 'tar xf - -C $WORKDIR'
 
   C) if you already made a tarball, put it at \$TARBALL ($TARBALL) and re-run.
-     It must expand to bioreef/data/{frames,metadata}/ under the repo root.
+     It must expand to data/{frames,metadata}/ under the repo root.
 
 then re-run this script."
   fi
