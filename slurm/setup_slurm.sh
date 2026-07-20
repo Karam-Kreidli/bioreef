@@ -125,12 +125,30 @@ PY
 # --- 5. dataset ------------------------------------------------------------
 say "Dataset"
 if [ ! -f frame_metadata.csv ] || [ ! -d frames ]; then
-  [ -f "$TARBALL" ] || die "no data. scp your tarball first:
-    (on the VM)  tar czf ozfish_bench.tar.gz frame_metadata.csv frames/
-                 scp ozfish_bench.tar.gz oelmutasim@44.210.222.21:/home/oelmutasim/
-  then re-run this script (or set TARBALL=/path/to/it)."
-  say "extracting $TARBALL"
-  tar xzf "$TARBALL" -C "$WORKDIR"
+  # A tarball is OPTIONAL. If one was transferred, use it; otherwise tell the
+  # user how to rsync the directory straight across. Packing 76k already-
+  # compressed PNGs into a tar.gz needs a second copy's worth of free disk on
+  # the source machine and saves almost nothing, so rsync is the better default.
+  if [ -f "$TARBALL" ]; then
+    say "extracting $TARBALL"
+    tar xzf "$TARBALL" -C "$WORKDIR"
+  else
+    die "no data yet. From the machine that HAS it (your VM), either:
+
+  A) rsync the directory across — no extra disk needed, and it RESUMES if the
+     connection drops (best for ~76k files):
+       rsync -avP frames/            oelmutasim@44.210.222.21:$WORKDIR/frames/
+       rsync -avP frame_metadata.csv oelmutasim@44.210.222.21:$WORKDIR/
+
+  B) stream a tar over ssh — single stream, still no temp file on the VM, but
+     restarts from zero if it breaks:
+       tar cf - frame_metadata.csv frames/ | \\
+         ssh oelmutasim@44.210.222.21 'tar xf - -C $WORKDIR'
+
+  C) if you already made a tarball, put it at \$TARBALL ($TARBALL) and re-run.
+
+then re-run this script."
+  fi
 fi
 [ -f frame_metadata.csv ] || die "frame_metadata.csv missing after extract"
 [ -d frames ]             || die "frames/ missing after extract"

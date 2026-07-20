@@ -3,15 +3,20 @@
 Three scripts. Run them in this order.
 
 ```bash
-# --- once, on the LOGIN node -------------------------------------------
+# --- 1. clone FIRST, on the cluster LOGIN node --------------------------
+# (the repo must exist before you rsync data into it)
 ssh -X oelmutasim@44.210.222.21
 module load anaconda3 && source ~/.bashrc
-
-# get the data there first, FROM YOUR VM (not from the cluster):
-#   tar czf ozfish_bench.tar.gz frame_metadata.csv frames/
-#   scp ozfish_bench.tar.gz oelmutasim@44.210.222.21:/home/oelmutasim/
-
 git clone https://github.com/Karam-Kreidli/bioreef.git ~/bioreef-classify
+
+# --- 2. send the data, FROM YOUR VM (a separate terminal) ---------------
+# rsync, not tar+scp: needs no second copy on the VM's disk (the crops are
+# already-compressed PNGs, so tar.gz saves almost nothing) and it RESUMES if
+# the connection drops — which matters at ~76k files.
+rsync -avP frames/            oelmutasim@44.210.222.21:~/bioreef-classify/frames/
+rsync -avP frame_metadata.csv oelmutasim@44.210.222.21:~/bioreef-classify/
+
+# --- 3. back on the login node ------------------------------------------
 cd ~/bioreef-classify
 HF_TOKEN=hf_xxxxx bash slurm/setup_slurm.sh   # pass it here, don't edit the script
 
