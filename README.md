@@ -138,16 +138,29 @@ multi-GPU (DDP) training.
 
 ### Ablations (one flag each — see paper Table K.2)
 
-| Flag | Ablation |
+Each ablation is a **one-factor change to C09** unless noted. Run them by id
+(`python scripts/run.py A6 --seed 0`) rather than by flag — the id is what gets
+recorded in `run_config.yaml`.
+
+| Run | Change from C09 |
 | --- | --- |
-| `--backbone dinov2` | A1 — DINOv3 → DINOv2 |
-| `--context_levels 0` | A2 — no MCEAM (head on pooled ROI) |
-| `--context_levels 1` | A3 — single context stream (social only) |
-| `--attention_depth 2` (or 4) | A4 / A4b — attention depth |
-| `--no_hslm` | A5 — flat softmax |
-| `--sampler random` | A6 — no balanced sampler |
-| `--loss ce` | A7 — plain CE species loss |
-| `--no_hslm --loss ce --sampler random` | A8 — all long-tail handling off |
+| A1 | backbone DINOv3 → frozen DINOv2-base |
+| A2 | context off: MCEAM removed (MLP head on pooled ROI [CLS]) |
+| A3 | single context stream (social only) vs all three |
+| A4 | attention depth 1 → 2 |
+| A5 | attention depth 1 → 4 |
+| A6 | hierarchy off: HSLM → flat softmax (species-only) |
+| A7 | sampler random → balanced (also changes steps/epoch — see below) |
+| A8 | **two** factors: hierarchy off *and* CB-Focal → CE. Compare against **A6**, not C09 |
+| A9 | backbone frozen → last 2 blocks unfrozen |
+| A10 | backbone frozen → last 4 blocks unfrozen |
+| A11 | full fine-tune: all 12 blocks + patch embed, tokens and pos. embeddings |
+
+**Two caveats to report honestly.** A7 changes the number of optimizer updates as
+well as class exposure (the balanced sampler draws `num_classes × median(count)`
+≈ 20.5k samples/epoch vs ~50.5k random), so it is not a pure sampling ablation.
+And the loss ablation is a chain, `C09 → A6 → A8`: only A6 vs A8 isolates
+CB-Focal.
 
 ## Attention figures (qualitative)
 

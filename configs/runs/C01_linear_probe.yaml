@@ -11,6 +11,9 @@ backbone: dinov3
 context_levels: 0          # no MCEAM (head on pooled ROI [CLS])
 attention_depth: 1
 unfreeze_blocks: 0
+probe: linear              # STRICT Linear(768, num_classes) — no LayerNorm, no
+                           # hidden layer, no GELU. "Linear probe" is read
+                           # strictly by reviewers; A2 keeps the MLP head.
 
 hslm: false                # flat softmax
 loss: ce

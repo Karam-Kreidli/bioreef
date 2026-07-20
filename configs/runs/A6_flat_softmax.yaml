@@ -1,5 +1,7 @@
 # A6 — hierarchy off: HSLM -> flat softmax (species-only).
 # (C09 reference with exactly hslm changed.)
+# Also the midpoint of the loss chain C09 -> A6 -> A8: A6 vs A8 is the
+# single-factor CB-Focal comparison (see A8_plain_ce.yaml).
 run_id: A6
 name: flat_softmax
 priority: core

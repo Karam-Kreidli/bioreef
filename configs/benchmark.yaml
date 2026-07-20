@@ -27,8 +27,10 @@ data:
   # species filters and split run, so an incomplete frame directory silently
   # yields a DIFFERENT benchmark (species count, class indices, deployment
   # assignment and split sizes all shift) with only a warning.
-  # Set true for the FINAL CAMPAIGN so a partial dataset is a hard error.
-  strict_images: false
+  # TRUE for the final campaign: a partial frame directory is a hard error
+  # rather than a quietly different benchmark. Flip to false only for
+  # exploratory work on a deliberately incomplete subset.
+  strict_images: true
 
 inclusion:
   # A species is included iff it clears BOTH thresholds (and is not a placeholder).

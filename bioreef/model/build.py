@@ -28,6 +28,13 @@ class ModelConfig:
     output_dim: int = 256
     num_heads: int = 8
     unfreeze_blocks: int = 0          # 0 = fully frozen backbone
+    # Head used when context_levels == 0 (no MCEAM):
+    #   "mlp"    LayerNorm -> Linear(D,out) -> GELU -> Linear(out,C)   (A2)
+    #   "linear" Linear(D, C) only — a STRICT linear probe (C01)
+    # C01 is the paper's linear-probe floor, and reviewers read "linear probe"
+    # strictly: any hidden layer + nonlinearity makes it an MLP probe and a
+    # stronger baseline than claimed. Ignored when context_levels > 0.
+    probe: str = "mlp"
 
 
 class Classifier(nn.Module):
@@ -54,17 +61,25 @@ class Classifier(nn.Module):
                 output_dim=cfg.output_dim, num_context_levels=cfg.context_levels,
                 attention_depth=cfg.attention_depth, use_checkpointing=True,
             )
+            head_in = cfg.output_dim
         else:
             # No context: project the ROI [CLS] directly (linear-probe-like, but
             # keeps HSLM + long-tail handling — this is ablation A2, not C01).
             self.mceam = None
-            self.roi_only_proj = nn.Sequential(
-                nn.LayerNorm(cfg.embed_dim),
-                nn.Linear(cfg.embed_dim, cfg.output_dim),
-                nn.GELU(),
-            )
+            if getattr(cfg, "probe", "mlp") == "linear":
+                # Strict linear probe (C01): the ONLY trainable transform of the
+                # frozen [CLS] is a single Linear. No LayerNorm, no nonlinearity.
+                self.roi_only_proj = nn.Identity()
+                head_in = cfg.embed_dim
+            else:
+                self.roi_only_proj = nn.Sequential(
+                    nn.LayerNorm(cfg.embed_dim),
+                    nn.Linear(cfg.embed_dim, cfg.output_dim),
+                    nn.GELU(),
+                )
+                head_in = cfg.output_dim
 
-        self.head = nn.Linear(cfg.output_dim, num_classes)
+        self.head = nn.Linear(head_in, num_classes)
 
     def trainable_modules(self):
         """The modules whose parameters the optimizer should step (everything

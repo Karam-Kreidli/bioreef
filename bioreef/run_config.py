@@ -39,6 +39,9 @@ class RunConfig:
     context_levels: int = 3
     attention_depth: int = 1
     unfreeze_blocks: int = 0
+    # Head shape when context_levels == 0: "mlp" (A2) | "linear" (C01, a strict
+    # single-Linear probe). No effect when context_levels > 0.
+    probe: str = "mlp"
 
     # --- timm-family model ---
     timm_name: str = "resnet50"      # any timm model id
@@ -88,7 +91,8 @@ class RunConfig:
         a DINOv3 config is misleading provenance. Keep everything for matanet (it
         may consult either)."""
         d = dict(self.__dict__)
-        dino_only = ("backbone", "context_levels", "attention_depth", "unfreeze_blocks")
+        dino_only = ("backbone", "context_levels", "attention_depth",
+                     "unfreeze_blocks", "probe")
         timm_only = ("timm_name", "pretrained")
         if self.model_family == "dino":
             for k in timm_only:

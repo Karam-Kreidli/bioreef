@@ -26,6 +26,7 @@ def build_model(run_cfg, num_classes: int) -> nn.Module:
             context_levels=run_cfg.context_levels,
             attention_depth=run_cfg.attention_depth,
             unfreeze_blocks=run_cfg.unfreeze_blocks,
+            probe=getattr(run_cfg, "probe", "mlp"),
         )
         return Classifier(mcfg, num_classes)
     if fam == "timm":

@@ -121,13 +121,34 @@ class ViTBackbone(nn.Module):
             raise ValueError(f"unfreeze_blocks: n={n} out of range for {total} blocks")
 
         self.vit.train()
+        if n == total:
+            # A11 is reported as the FULL fine-tune endpoint, so it must actually
+            # be one. Unfreezing only the blocks would leave the patch embedding,
+            # CLS/register tokens and positional embeddings frozen — a partial
+            # fine-tune wearing the name of a full one.
+            for param in self.vit.parameters():
+                param.requires_grad = True
+            n_tr = sum(p.numel() for p in self.vit.parameters() if p.requires_grad)
+            logger.info(f"Unfroze the ENTIRE backbone: all {total} blocks + patch "
+                        f"embedding, tokens and positional embeddings "
+                        f"({n_tr:,} backbone params now trainable).")
+            return
+
         for i, block in enumerate(blocks):
             if i >= total - n:
                 for param in block.parameters():
                     param.requires_grad = True
 
         layernorm = getattr(self.vit, "layernorm", None) or getattr(self.vit, "norm", None)
-        if layernorm is not None:
+        if layernorm is None:
+            # Not fatal (the blocks still adapt), but the final norm staying
+            # frozen changes what "unfreeze last N" means — say so.
+            logger.warning(
+                "unfreeze_blocks(%d): no final layer-norm found at .layernorm or "
+                ".norm on '%s'; the last-N blocks are unfrozen but the final norm "
+                "remains frozen.", n, self.pretrained_model_name,
+            )
+        else:
             for param in layernorm.parameters():
                 param.requires_grad = True
 
