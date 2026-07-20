@@ -72,7 +72,9 @@ splits/        released split files (crop -> split, deployment, taxonomy)
   genus/family; per-level NLL with weights family=3 / genus=2 / species=1 trades
   a little species Top-1 for better Hierarchical Distance. This is a
   marginalization mechanism — distinct from MATANet's parallel per-level heads.
-- **Long-tail.** CB-Focal species loss + a class-balanced sampler.
+- **Long-tail.** CB-Focal species loss. The reference C09 uses the **random**
+  sampler; the class-balanced sampler is ablation A7 (it lost on all three
+  metrics). Note the two also differ in optimizer steps per epoch — see A7.
 
 ## Reproducibility
 
@@ -87,8 +89,11 @@ std over seeds {0, 1, 2}.
 ```bash
 pip install -r requirements.txt
 
-# Train the proposed model (C09), single GPU
-python scripts/train.py --csv frame_metadata.csv --img_dir <frames> --seed 0
+# Train the proposed model (C09), single GPU. The --run_id is REQUIRED: without
+# it train.py builds an ad-hoc config (balanced sampler, 30 epochs) that is NOT
+# C09 (random sampler, 60 epochs). Prefer run.py — it is the reference path and
+# writes the full results/ tree with provenance.
+python scripts/run.py C09 --seed 0
 
 # Multi-GPU
 torchrun --nproc_per_node=2 scripts/train.py --csv ... --img_dir ... --seed 0

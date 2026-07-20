@@ -57,7 +57,9 @@ def parse_args():
     p.add_argument("--img_dir", default=None, help="override data.img_dir")
     p.add_argument("--gpu", default=None,
                    help="GPU to use, e.g. 1 or cuda:1 or cpu (overrides config 'device')")
-    p.add_argument("--batch_size", type=int, default=32)
+    p.add_argument("--batch_size", type=int, default=None,
+                   help="override the config's batch size; omit to use each "
+                        "run's configured value (recorded in run_config.yaml)")
     p.add_argument("--epochs", type=int, default=None,
                    help="override the config's epoch count (e.g. a length sweep); "
                         "omit to use each run's configured epochs")
@@ -117,6 +119,11 @@ def execute_run(run_cfg, bench, seed, args, device):
 
     if args.epochs is not None:
         run_cfg.epochs = args.epochs   # length sweep / diagnostic override
+    if args.batch_size is not None:
+        # Write the override BACK into run_cfg before it is serialized, so
+        # run_config.yaml records the batch size that actually trained rather
+        # than the one the YAML happened to declare.
+        run_cfg.batch_size = args.batch_size
     if args.no_augment:
         run_cfg.augment = False        # augmentation ablation / diagnostic
 
@@ -124,7 +131,7 @@ def execute_run(run_cfg, bench, seed, args, device):
     set_seed(seed)
     test_metrics, val_metrics, model, idx_to_sp, num_classes = train_and_evaluate(
         run_cfg, bench, seed, device,
-        batch_size=args.batch_size, num_workers=args.num_workers,
+        batch_size=run_cfg.batch_size, num_workers=args.num_workers,
     )
 
     result = {

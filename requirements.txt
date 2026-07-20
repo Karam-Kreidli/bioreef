@@ -1,8 +1,10 @@
 # Core. Needs Python >=3.9 (transformers >=4.53 dropped 3.8).
 torch>=2.1
 torchvision>=0.16
-transformers>=4.53        # DINOv3 (dinov3_vit) landed here; <4.53 raises
-                          # "does not recognize architecture dinov3_vit"
+transformers>=4.56.0      # RELEASED DINOv3 support starts at 4.56.0 (per Meta's
+                          # dinov3 repo). 4.53-4.55 can raise "does not recognize
+                          # architecture dinov3_vit". Weights are also GATED:
+                          # authenticate + get access approved before loading.
 timm>=1.0                 # CNN/transformer baselines (C03/C05/C07)
 numpy>=1.24
 pandas>=2.0

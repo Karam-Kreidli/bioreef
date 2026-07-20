@@ -86,13 +86,18 @@ def main():
 
     model = Classifier(mcfg, num_classes).to(device)
     model.load_state_dict(ckpt["model"])
-    if args.use_ema and "ema" in ckpt:
-        # Overlay EMA shadow onto matching params.
-        sd = model.state_dict()
-        for k, v in ckpt["ema"].items():
-            if k in sd:
-                sd[k].copy_(v)
-        print("[test] using EMA weights")
+    if args.use_ema:
+        # ckpt["model"] is ALREADY the EMA weights of the best-val-HD epoch.
+        # ckpt["ema"] is the EMA state left over after the FINAL epoch, so
+        # overlaying it produced a mix of two different epochs — neither the
+        # selected checkpoint nor a coherent one. Refuse rather than silently
+        # evaluating something that is not the reported model.
+        raise SystemExit(
+            "--use_ema is not supported: the saved 'model' is already the "
+            "best-epoch EMA. The stored 'ema' entry is final-epoch state and "
+            "mixing the two evaluates a checkpoint that was never selected. "
+            "Re-run without --use_ema."
+        )
     model.eval()
 
     test_dl = DataLoader(FishCropDataset(test_s, is_train=False),

@@ -103,7 +103,12 @@ class MarineAugmentor:
     def _apply_photometric_jitter(self, image):
         beta = np.random.uniform(-self.brightness_limit, self.brightness_limit)
         alpha = 1.0 + np.random.uniform(-self.contrast_limit, self.contrast_limit)
-        result = cv2.convertScaleAbs(image, alpha=alpha, beta=beta * 255)
+        # NOT convertScaleAbs: that computes abs(alpha*px + beta) before the
+        # uint8 cast, so a negative brightness offset REFLECTS dark pixels back
+        # up instead of clipping them (px=10, beta=-51 -> 41, not 0). On dark
+        # underwater crops that inverts exactly the regions we care about.
+        result = image.astype(np.float32) * alpha + beta * 255
+        result = np.clip(result, 0, 255).astype(np.uint8)
         hsv = cv2.cvtColor(result, cv2.COLOR_BGR2HSV).astype(np.float32)
         sat_factor = 1.0 + np.random.uniform(-self.saturation_limit, self.saturation_limit)
         hsv[:, :, 1] = np.clip(hsv[:, :, 1] * sat_factor, 0, 255)

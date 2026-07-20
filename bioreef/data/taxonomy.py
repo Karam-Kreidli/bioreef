@@ -35,10 +35,12 @@ def get_taxonomy_tree(csv_path: str) -> dict:
     appears under more than one genus."""
     import pandas as pd
     from bioreef.data.split import binomial
-    try:
-        df = pd.read_csv(csv_path)
-    except Exception:
-        return {}
+    # Deliberately NOT wrapped in try/except. An unreadable taxonomy CSV used to
+    # return {}, which sends every species to __unknown_genus__/__unknown_family__:
+    # the genus and family terms of the HSLM loss then become constants, training
+    # runs to completion looking healthy, and the whole campaign is invalid. A
+    # missing/corrupt taxonomy must stop the run, not degrade it silently.
+    df = pd.read_csv(csv_path)
     tree = {}
     for _, row in df.dropna(subset=["species", "genus", "family"]).iterrows():
         name = binomial(row["genus"], row["species"])

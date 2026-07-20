@@ -225,7 +225,11 @@ def main():
         shuffle = False
     else:
         from torch.utils.data.distributed import DistributedSampler
-        train_sampler = DistributedSampler(train_ds, shuffle=True) if is_dist() else None
+        # seed=args.seed is required: without it DistributedSampler uses its own
+        # default seed, so seeds 0/1/2 would all see the SAME data order under
+        # DDP (and differ from the single-GPU path).
+        train_sampler = (DistributedSampler(train_ds, shuffle=True, seed=args.seed)
+                         if is_dist() else None)
         shuffle = train_sampler is None
 
     train_dl = DataLoader(train_ds, batch_size=run_cfg.batch_size, sampler=train_sampler,
@@ -248,8 +252,16 @@ def main():
     # Loss (from run_cfg so --run_id picks the panel's loss; A5/A7/A8 flags).
     if run_cfg.hslm:
         s2g, s2f, n_gen, n_fam, n_missing = build_taxonomy_maps(idx_to_sp, tree)
-        if is_main and n_missing:
-            print(f"[hslm] {n_missing}/{num_classes} species missing taxonomy -> __unknown__")
+        if n_missing:
+            # Not a warning: species with no taxonomy share one __unknown__ genus
+            # and family, so their genus/family loss terms are meaningless while
+            # training still looks healthy. Refuse to produce a benchmark number.
+            raise RuntimeError(
+                f"[hslm] {n_missing}/{num_classes} species have no taxonomy entry "
+                f"and would be pooled into __unknown_genus__/__unknown_family__, "
+                f"silently invalidating the hierarchical loss. Fix the taxonomy "
+                f"CSV (or disable hslm) before running the benchmark."
+            )
         criterion = HSLMLoss(
             sp_counts, s2g, s2f, n_gen, n_fam,
             family_weight=run_cfg.family_weight, genus_weight=run_cfg.genus_weight,

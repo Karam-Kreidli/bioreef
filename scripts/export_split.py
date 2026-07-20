@@ -76,14 +76,29 @@ def main():
         for s in samples:
             fn = os.path.basename(s["img_path"])
             tax = tree.get(s["species"], {})
-            rows.append((fn, s["deployment"], fold,
+            x, y, w, h = s["bbox"]                       # xywh
+            rows.append((s["annotation_id"], fn, s["deployment"], fold,
+                         x, y, x + w, y + h,
                          tax.get("family", ""), tax.get("genus", ""), s["species"]))
 
+    # The bbox columns are what make a row identifiable: without them, several
+    # fish of the same species in one frame export as byte-identical rows and
+    # the "one row per crop" claim cannot be checked by a reader.
+    n_unique = len({r[0] for r in rows})
+    if n_unique != len(rows):
+        raise SystemExit(
+            f"export_split: {len(rows) - n_unique} rows share an annotation_id "
+            f"(file_name + bbox). The split would not uniquely identify its "
+            f"crops. Check the metadata CSV for exact duplicate annotations."
+        )
+
     out_path = os.path.join(args.out_dir, f"ozfish_split_seed{bench.split_seed}.csv")
+    import csv
     with open(out_path, "w", encoding="utf-8", newline="") as f:
-        f.write("file_name,deployment,split,family,genus,species\n")
-        for r in rows:
-            f.write(",".join(r) + "\n")
+        wr = csv.writer(f)                              # quotes any field with a comma
+        wr.writerow(["annotation_id", "file_name", "deployment", "split",
+                     "x0", "y0", "x1", "y1", "family", "genus", "species"])
+        wr.writerows(rows)
 
     print(f"wrote {len(rows)} crops across {num_classes} species -> {out_path}")
     for fold in ("train", "val", "test"):

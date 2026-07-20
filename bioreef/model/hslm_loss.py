@@ -133,10 +133,13 @@ class HSLMLoss(nn.Module):
             + self.w_family * family_loss
         )
 
+        # Detached TENSORS, not floats. float(cuda_tensor) forces a device->host
+        # sync on every batch; these values are only read for logging, so the
+        # caller pays the sync (if ever) instead of the training loop.
         self.last_components = {
-            "species": float(species_loss.detach()),
-            "genus": float(genus_loss.detach()),
-            "family": float(family_loss.detach()),
-            "total": float(total.detach()),
+            "species": species_loss.detach(),
+            "genus": genus_loss.detach(),
+            "family": family_loss.detach(),
+            "total": total.detach(),
         }
         return total

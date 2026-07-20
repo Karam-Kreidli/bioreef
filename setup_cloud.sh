@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
 # setup_cloud.sh — bootstrap bioreef-classify on a fresh cloud GPU box for the
-# heavy runs (A12 full fine-tune, C08 MATANet) that the 8 GB Quadros can't fit.
+# heavy runs (A11 full fine-tune, C08 MATANet) that the 8 GB Quadros can't fit.
 #
 # Target box: ONE GPU with >=24 GB VRAM (A10 / L4 / A5000 / RTX 4090/3090).
 # C08 (MATANet, DINOv2-large ~300M, multi-context) is the sizing constraint;
-# A12 (full FT of ViT-B + MCEAM) fits in 16 GB but 24 gives batch-32 headroom.
+# A11 (full FT of ViT-B + MCEAM) fits in 16 GB but 24 gives batch-32 headroom.
 #
 # Run once on the fresh box:  bash setup_cloud.sh
 # It is idempotent-ish: safe to re-run; skips steps whose output already exists.
@@ -47,7 +47,7 @@ say "GPU check"
 command -v nvidia-smi >/dev/null || die "no nvidia-smi — this box has no GPU driver"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1)
-[ "$VRAM_MB" -ge 22000 ] || say "WARNING: <24 GB VRAM ($VRAM_MB MB). A12 may fit; C08 (DINOv2-large) likely won't at batch>=16."
+[ "$VRAM_MB" -ge 22000 ] || say "WARNING: <24 GB VRAM ($VRAM_MB MB). A11 may fit; C08 (DINOv2-large) likely won't at batch>=16."
 
 # --- 1. system deps + python ----------------------------------------------
 say "System deps"
@@ -124,6 +124,6 @@ python scripts/run.py C09 --seed 0 --gpu 0 --epochs 1 --num_workers 8 \
   --results_dir results_smoke || die "smoke run failed"
 
 say "DONE. The box is ready. Now run the heavy jobs, e.g.:"
-echo "    python scripts/run.py A12 --gpu 0 --num_workers 8 --save_checkpoint   # full FT (batch 32 fits on 24 GB)"
+echo "    python scripts/run.py A11 --gpu 0 --num_workers 8 --save_checkpoint   # full FT (batch 32 fits on 24 GB)"
 echo "    # C08 (MATANet): follow matanet/README.md — clone their repo, patch, export, run, ingest"
-echo "  Remember: A12 keeps batch 32 for panel parity; C08 keeps MATANet's own batch (do not bump it)."
+echo "  Remember: A11 keeps batch 32 for panel parity; C08 keeps MATANet's own batch (do not bump it)."

@@ -89,14 +89,29 @@ def _build_frame_index(search_dirs):
     dirs. Scans each directory once (first dir wins on collision), so per-row
     lookup is O(1). Handles the suffixed crop naming AND plain exact names: a file
     is indexed under both its stripped frame name and its literal name."""
-    index = {}
+    index, collisions = {}, {}
     for d in search_dirs:
         if not d or not os.path.isdir(d):
             continue
-        for fn in os.listdir(d):
+        # sorted(): os.listdir order is filesystem-dependent, so on a collision
+        # the "first wins" rule would resolve the same metadata row to different
+        # files on different machines — results drifting with neither the split
+        # seed nor the model seed changing. Sorting makes the choice deterministic.
+        for fn in sorted(os.listdir(d)):
             path = os.path.join(d, fn)
             for key in (_frame_prefix(fn), fn):     # frame name and literal name
+                if key in index and index[key] != path:
+                    collisions.setdefault(key, [index[key]]).append(path)
                 index.setdefault(key, path)
+    if collisions:
+        n = len(collisions)
+        ex = "; ".join(f"{k} -> {v[0]} | {v[1]}" for k, v in list(collisions.items())[:3])
+        logger.warning(
+            "%d frame name(s) resolve to more than one file on disk; the "
+            "lexicographically first is used. Verify these are the same image — "
+            "a genuine collision silently trains on the wrong crop. Examples: %s",
+            n, ex,
+        )
     return index
 
 
@@ -153,6 +168,13 @@ def _load_rows(csv_path: str, img_dir: str, extra_img_dirs, filter_placeholders,
             "bbox": [x0, y0, x1 - x0, y1 - y0],  # xyxy -> xywh for ContextHarvester
             "species": sp,                        # full binomial = the class label
             "deployment": deployment_id(fname),
+            # Stable per-crop identity for the released split. Frame name alone
+            # is NOT unique: one frame can hold several fish of the same species
+            # (22,223 rows in seed-0 share a file_name), so file_name+species
+            # cannot tell those annotations apart. The bbox is what distinguishes
+            # them, and it is derived from the row content, so it survives a
+            # reordering of the CSV where a positional index would not.
+            "annotation_id": f"{fname}|{x0},{y0},{x1},{y1}",
         })
 
     if n_missing_img:

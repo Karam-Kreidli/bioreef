@@ -144,12 +144,20 @@ def grad_cam(model, roi, target_class, target_layer):
     h1.remove(); h2.remove()
 
     a, g = acts["v"], grads["v"]
-    if a.dim() == 4 and a.shape[1] <= a.shape[-1]:      # (B,C,H,W)
-        weights = g.mean(dim=(2, 3), keepdim=True)      # GAP over H,W
-        cam = (weights * a).sum(1)                       # (B,H,W)
-    else:                                                # (B,H,W,C) channels-last
+    # Layout must NOT be inferred from relative dim sizes: a ResNet stage is
+    # (B,2048,7,7), where "channels <= spatial" is false and would send NCHW
+    # activations down the channels-last branch, producing a garbage CAM.
+    # Channels-last here means Swin/ViT-style (B,H,W,C) blocks, where the last
+    # dim is the embedding and the two middle dims are a square spatial grid.
+    if a.dim() != 4:
+        raise RuntimeError(f"Grad-CAM expects a 4-D activation, got {tuple(a.shape)}")
+    channels_last = a.shape[1] == a.shape[2] and a.shape[1] != a.shape[3]
+    if channels_last:                                    # (B,H,W,C)
         weights = g.mean(dim=(1, 2), keepdim=True)
         cam = (weights * a).sum(-1)                      # (B,H,W)
+    else:                                                # (B,C,H,W)
+        weights = g.mean(dim=(2, 3), keepdim=True)       # GAP over H,W
+        cam = (weights * a).sum(1)                       # (B,H,W)
     cam = F.relu(cam)[0]
     return cam.detach().cpu().numpy()
 
