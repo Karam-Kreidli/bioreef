@@ -139,7 +139,8 @@ if [ ! -f "$CSV_PATH" ] || [ -z "$(ls -A "$IMG_PATH" 2>/dev/null)" ]; then
     say "extracting $TARBALL"
     tar xzf "$TARBALL" -C "$WORKDIR"
   else
-    die "no data yet. From the machine that HAS it (your VM), either:
+    die "no data yet — but the target directories now EXIST (created above), so
+the transfer below will work. From the machine that HAS the data (your VM):
 
   A) rsync the directories across — no extra disk needed on the VM, and it
      RESUMES if the connection drops (best for ~76k files). Run FROM the repo

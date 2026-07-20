@@ -9,6 +9,10 @@ ssh -X oelmutasim@44.210.222.21
 module load anaconda3 && source ~/.bashrc
 git clone https://github.com/Karam-Kreidli/bioreef.git ~/bioreef-classify
 
+# rsync creates only the LAST path component, so make the parents now.
+# (setup_slurm.sh also does this, but it needs the data to already be there.)
+mkdir -p ~/bioreef-classify/data/{frames,metadata}
+
 # --- 2. send the data, FROM YOUR VM (a separate terminal) ---------------
 # rsync, not tar+scp: needs no second copy on the VM's disk (the crops are
 # already-compressed PNGs, so tar.gz saves almost nothing) and it RESUMES if
