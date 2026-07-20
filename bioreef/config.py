@@ -35,6 +35,12 @@ class BenchmarkConfig:
     # Extra image dirs searched (in order) when a frame isn't in img_dir — for
     # datasets spread across folders (e.g. frames_1/ + frames_2/).
     extra_img_dirs: List[str] = field(default_factory=list)
+    # Missing crops: rows whose image is absent are skipped BEFORE the species
+    # filters and split run, so an incomplete frame dir silently produces a
+    # DIFFERENT benchmark (species count, class indices, split sizes all shift).
+    # True = hard error instead. Turn this ON for the final campaign; leave False
+    # for exploratory work on partial data.
+    strict_images: bool = False
     # Default compute device (e.g. "cuda:0", "cuda:1", "cpu"). Empty -> auto
     # (cuda:0 if available, else cpu). --gpu on a script overrides this.
     device: str = ""

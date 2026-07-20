@@ -76,6 +76,16 @@ def main():
     ann_col = "annotation_id" if "annotation_id" in sub.columns else sub.columns[0]
     pred_col = "concept_name" if "concept_name" in sub.columns else sub.columns[1]
 
+    # Reserved index for predictions outside our label set. It maps to a species
+    # name that is deliberately ABSENT from the taxonomy tree, so
+    # hierarchical_distance returns the maximum (root) penalty with level
+    # 'unknown'. The previous approach mapped unknowns to (true+1) % num_classes —
+    # a real neighbouring class that could share the true class's genus or family,
+    # scoring HD 1 or 2 instead of the maximum 3 and UNDER-penalising the error.
+    UNKNOWN_IDX = num_classes
+    UNKNOWN_NAME = "__unknown_prediction__"
+    idx_to_sp[UNKNOWN_IDX] = UNKNOWN_NAME     # not in the tree -> max HD by construction
+
     preds, targets, n_unknown_pred = [], [], 0
     for _, row in sub.iterrows():
         annid = int(row[ann_col])
@@ -84,8 +94,7 @@ def main():
         pred_name = str(row[pred_col])
         if pred_name not in name_to_idx:      # a predicted name outside our label set
             n_unknown_pred += 1
-            # map to a sentinel wrong index (guaranteed != target) so it counts as error
-            pred_idx = (true_by_annid[annid] + 1) % num_classes
+            pred_idx = UNKNOWN_IDX            # max hierarchical penalty, never a near-miss
         else:
             pred_idx = name_to_idx[pred_name]
         preds.append(pred_idx)
@@ -95,8 +104,24 @@ def main():
         print(f"[ingest] warning: {len(targets)} predictions vs "
               f"{len(test['annotations'])} test annotations (some missing)")
     if n_unknown_pred:
-        print(f"[ingest] warning: {n_unknown_pred} predicted names outside the "
-              "label set (counted as errors)")
+        frac = n_unknown_pred / max(1, len(preds))
+        print(f"[ingest] warning: {n_unknown_pred} ({frac:.1%}) predicted names "
+              "outside the label set (scored at maximum hierarchical distance)")
+        # A large fraction almost never means "MATANet is bad" — it means the
+        # predicted name STRINGS don't match our binomial label format, so every
+        # prediction is being counted wrong. That would silently produce a
+        # plausible-looking ~0 score. Fail loudly instead.
+        if frac > 0.05:
+            unknown_names = sorted({str(r[pred_col]) for _, r in sub.iterrows()
+                                    if str(r[pred_col]) not in name_to_idx})[:5]
+            raise SystemExit(
+                f"[ingest] ABORT: {frac:.1%} of predictions are names we do not "
+                f"recognise. This is a label-FORMAT mismatch, not a bad model — "
+                f"MATANet is emitting names that differ from our binomial keys.\n"
+                f"  ours  (examples): {list(name_to_idx)[:3]}\n"
+                f"  theirs(examples): {unknown_names}\n"
+                f"Normalise the naming on one side before trusting any C08 number."
+            )
 
     tree = get_taxonomy_tree(bench.csv_path)
     m = evaluate_classification(

@@ -23,6 +23,12 @@ data:
   # extra_img_dirs:
   #   - frames_part1
   #   - frames_part2
+  # Missing crops: rows whose image is absent on disk are skipped BEFORE the
+  # species filters and split run, so an incomplete frame directory silently
+  # yields a DIFFERENT benchmark (species count, class indices, deployment
+  # assignment and split sizes all shift) with only a warning.
+  # Set true for the FINAL CAMPAIGN so a partial dataset is a hard error.
+  strict_images: false
 
 inclusion:
   # A species is included iff it clears BOTH thresholds (and is not a placeholder).

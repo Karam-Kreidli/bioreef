@@ -100,10 +100,18 @@ def _build_frame_index(search_dirs):
     return index
 
 
-def _load_rows(csv_path: str, img_dir: str, extra_img_dirs, filter_placeholders):
+def _load_rows(csv_path: str, img_dir: str, extra_img_dirs, filter_placeholders,
+               strict_images: bool = False):
     """Read the metadata CSV into raw samples with resolved image paths.
-    Each row -> {img_path, bbox(xywh), species, deployment}. Rows whose image is
-    not found on disk are skipped (matches the production recipe)."""
+    Each row -> {img_path, bbox(xywh), species, deployment}.
+
+    Rows whose image is missing are skipped BEFORE the species filters and the
+    split are computed — so an incomplete frame directory silently yields a
+    DIFFERENT benchmark (different species count, class indices, deployment
+    assignment and split sizes) with only a warning. strict_images=True refuses
+    that: any missing image is a hard error, which is what a pinned benchmark
+    wants. Set data.strict_images in configs/benchmark.yaml (default False keeps
+    the permissive behaviour for exploratory/partial-data use)."""
     import pandas as pd
 
     df = pd.read_csv(csv_path)
@@ -113,6 +121,7 @@ def _load_rows(csv_path: str, img_dir: str, extra_img_dirs, filter_placeholders)
     frame_index = _build_frame_index(search_dirs)
     raw = []
     n_missing_img = 0
+    missing_examples = []
     for _, row in df.iterrows():
         epithet = row.get("species")
         if not isinstance(epithet, str) or epithet.strip() == "":
@@ -134,6 +143,8 @@ def _load_rows(csv_path: str, img_dir: str, extra_img_dirs, filter_placeholders)
                 img_path = cand
         if img_path is None:
             n_missing_img += 1
+            if strict_images:
+                missing_examples.append(fname)
             continue
 
         x0, y0, x1, y1 = int(row["x0"]), int(row["y0"]), int(row["x1"]), int(row["y1"])
@@ -145,7 +156,19 @@ def _load_rows(csv_path: str, img_dir: str, extra_img_dirs, filter_placeholders)
         })
 
     if n_missing_img:
-        logger.warning("%d rows skipped (image not found on disk).", n_missing_img)
+        if strict_images:
+            sample = ", ".join(missing_examples[:5])
+            raise SystemExit(
+                f"[strict_images] {n_missing_img} CSV rows have no image on disk "
+                f"(searched {search_dirs}). Skipping them would silently change the "
+                f"benchmark — species count, class indices, deployment assignment and "
+                f"split sizes all shift. Fix the frame directory, or set "
+                f"data.strict_images: false to allow partial data.\n"
+                f"  first missing: {sample}"
+            )
+        logger.warning("%d rows skipped (image not found on disk). The benchmark is "
+                       "defined by the RESOLVED rows — set data.strict_images: true "
+                       "to make this an error instead.", n_missing_img)
     return raw
 
 
@@ -250,6 +273,7 @@ def split_dataset(
     seed: int = 0,
     filter_placeholders: bool = True,
     extra_img_dirs: List[str] = None,
+    strict_images: bool = False,
 ):
     """Build the leakage-safe deployment-grouped split.
 
@@ -260,7 +284,8 @@ def split_dataset(
     matching the tuple the trainer expects. Each sample dict has img_path, bbox
     (xywh), class_idx, species, deployment.
     """
-    raw = _load_rows(csv_path, img_dir, extra_img_dirs, filter_placeholders)
+    raw = _load_rows(csv_path, img_dir, extra_img_dirs, filter_placeholders,
+                     strict_images=strict_images)
 
     kept_species = benchmark_species(raw, min_samples, min_deployments)
     species_to_class = {sp: i for i, sp in enumerate(kept_species)}
@@ -304,6 +329,7 @@ def split_from_config(csv_path, img_dir, cfg, extra_img_dirs=None):
         seed=cfg.split_seed,
         filter_placeholders=cfg.filter_placeholders,
         extra_img_dirs=extra_img_dirs,
+        strict_images=getattr(cfg, "strict_images", False),
     )
 
 
