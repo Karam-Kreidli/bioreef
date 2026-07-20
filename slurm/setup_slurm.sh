@@ -124,7 +124,12 @@ PY
 
 # --- 5. dataset ------------------------------------------------------------
 say "Dataset"
-if [ ! -f frame_metadata.csv ] || [ ! -d frames ]; then
+# Canonical layout (matches the VM): data lives inside the package dir.
+CSV_PATH="$WORKDIR/bioreef/data/metadata/frame_metadata.csv"
+IMG_PATH="$WORKDIR/bioreef/data/frames"
+mkdir -p "$(dirname "$CSV_PATH")" "$IMG_PATH"
+
+if [ ! -f "$CSV_PATH" ] || [ -z "$(ls -A "$IMG_PATH" 2>/dev/null)" ]; then
   # A tarball is OPTIONAL. If one was transferred, use it; otherwise tell the
   # user how to rsync the directory straight across. Packing 76k already-
   # compressed PNGs into a tar.gz needs a second copy's worth of free disk on
@@ -135,34 +140,38 @@ if [ ! -f frame_metadata.csv ] || [ ! -d frames ]; then
   else
     die "no data yet. From the machine that HAS it (your VM), either:
 
-  A) rsync the directory across — no extra disk needed, and it RESUMES if the
-     connection drops (best for ~76k files):
-       rsync -avP frames/            oelmutasim@44.210.222.21:$WORKDIR/frames/
-       rsync -avP frame_metadata.csv oelmutasim@44.210.222.21:$WORKDIR/
+  A) rsync the directories across — no extra disk needed on the VM, and it
+     RESUMES if the connection drops (best for ~76k files). Run FROM the repo
+     root on the VM:
+       rsync -avP bioreef/data/frames/ \\
+         oelmutasim@44.210.222.21:$IMG_PATH/
+       rsync -avP bioreef/data/metadata/ \\
+         oelmutasim@44.210.222.21:$(dirname "$CSV_PATH")/
 
-  B) stream a tar over ssh — single stream, still no temp file on the VM, but
-     restarts from zero if it breaks:
-       tar cf - frame_metadata.csv frames/ | \\
+  B) stream a tar over ssh — no temp file on the VM either, but it restarts
+     from zero if it breaks:
+       tar cf - bioreef/data/frames bioreef/data/metadata | \\
          ssh oelmutasim@44.210.222.21 'tar xf - -C $WORKDIR'
 
   C) if you already made a tarball, put it at \$TARBALL ($TARBALL) and re-run.
+     It must expand to bioreef/data/{frames,metadata}/ under the repo root.
 
 then re-run this script."
   fi
 fi
-[ -f frame_metadata.csv ] || die "frame_metadata.csv missing after extract"
-[ -d frames ]             || die "frames/ missing after extract"
-say "frames on disk: $(find frames -type f | wc -l)"
+[ -f "$CSV_PATH" ] || die "metadata CSV missing: $CSV_PATH"
+say "frames on disk: $(find "$IMG_PATH" -type f | wc -l)"
 
-python - <<PY
+CSV_PATH="$CSV_PATH" IMG_PATH="$IMG_PATH" python - <<'PY'
 import yaml, os
 p = "configs/benchmark.yaml"
 c = yaml.safe_load(open(p))
 c.setdefault("data", {})
-c["data"]["csv_path"] = os.path.abspath("frame_metadata.csv")
-c["data"]["img_dir"]  = os.path.abspath("frames")
+c["data"]["csv_path"] = os.environ["CSV_PATH"]
+c["data"]["img_dir"]  = os.environ["IMG_PATH"]
 yaml.safe_dump(c, open(p, "w"), sort_keys=False)
-print("[setup] benchmark.yaml ->", c["data"]["csv_path"])
+print("[setup] benchmark.yaml csv ->", c["data"]["csv_path"])
+print("[setup] benchmark.yaml img ->", c["data"]["img_dir"])
 PY
 
 # --- 6. verify the split ---------------------------------------------------
