@@ -1,20 +1,20 @@
-# A12 — adaptation depth: all 12 transformer blocks unfrozen (full fine-tune).
+# A11 — adaptation depth: all 12 transformer blocks unfrozen (full fine-tune).
 # (C09 reference with exactly unfreeze_blocks changed.)
 #
-# The HONEST endpoint of the frozen->fine-tuned frontier (C09 0 -> A10 2 ->
-# A11 4 -> A12 12). Unlike C06 (which also swaps DINOv3->ImageNet ViT-B, MCEAM
-# ->linear head, and drops context/HSLM), A12 is C09 with ONLY the block count
-# changed — so the sweep C09/A10/A11/A12 is a clean one-variable curve, and the
+# The HONEST endpoint of the frozen->fine-tuned frontier (C09 0 -> A9 2 ->
+# A10 4 -> A11 12). Unlike C06 (which also swaps DINOv3->ImageNet ViT-B, MCEAM
+# ->linear head, and drops context/HSLM), A11 is C09 with ONLY the block count
+# changed — so the sweep C09/A9/A10/A11 is a clean one-variable curve, and the
 # "last-2-blocks recover X% of the gap" percentages are computed against a real
 # same-model endpoint rather than against the confounded C06.
 #
 # unfreeze_blocks=12 unfreezes all 12 of 12 transformer blocks (+ final norm):
 # ~85M of 86.6M backbone params trainable. NOTE: patch embeddings and pre-block
 # layers stay frozen (this method unfreezes transformer blocks + final norm), so
-# A12 is "all transformer blocks" full-FT, marginally less than a timm-style
+# A11 is "all transformer blocks" full-FT, marginally less than a timm-style
 # train-everything full-FT (C06). Documented so the small difference is not a
 # hidden confound.
-run_id: A12
+run_id: A11
 name: unfreeze_all
 priority: optional
 description: 'C09 reference with one change: backbone frozen -> all 12 blocks unfrozen (full fine-tune).'
@@ -42,5 +42,5 @@ seeds:
 # MCEAM's multi-stream forward. On the 8 GB benchmark GPUs this is the most likely
 # to OOM; run on the headless card (--gpu), and if it will not fit at batch 32,
 # --batch_size 16 (record the departure). lr 1e-4 is inherited from the panel; it
-# is hot for full-backbone fine-tuning — if A12 trains unstably vs A10/A11, a lower
+# is hot for full-backbone fine-tuning — if A11 trains unstably vs A10/A11, a lower
 # backbone lr is the first thing to try (but that departs from the one-field rule).

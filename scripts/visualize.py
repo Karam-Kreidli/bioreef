@@ -83,12 +83,12 @@ def load_checkpoint(path):
 
 
 def denorm(stream_tensor):
-    """(3,H,W) ImageNet-normalized tensor -> (H,W,3) uint8-range float [0,1] RGB.
-    ContextHarvester stored BGR (OpenCV) then Z-scored; undo both."""
+    """(3,H,W) ImageNet-normalized tensor -> (H,W,3) float [0,1] RGB for display.
+    ContextHarvester._normalize already converts BGR->RGB, so only the Z-score is
+    undone here (no channel flip — flipping again would show false colours)."""
     img = stream_tensor.detach().cpu().numpy().transpose(1, 2, 0)  # (H,W,3)
     img = img * IMAGENET_STD + IMAGENET_MEAN
-    img = np.clip(img, 0, 1)
-    return img[:, :, ::-1]  # BGR -> RGB for display
+    return np.clip(img, 0, 1)
 
 
 def upsample_map(weights_1d_or_grid, size=RES):

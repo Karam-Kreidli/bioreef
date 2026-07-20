@@ -1,6 +1,6 @@
-# A4b — attention depth 1 -> 4 blocks.
+# A5 — attention depth 1 -> 4 blocks.
 # (C09 reference with exactly attention_depth changed.)
-run_id: A4b
+run_id: A5
 name: depth4
 priority: optional
 description: 'C09 reference with one change: attention depth 1 -> 4 blocks.'

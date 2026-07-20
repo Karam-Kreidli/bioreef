@@ -1,6 +1,6 @@
-# A5 — hierarchy off: HSLM -> flat softmax (species-only).
+# A6 — hierarchy off: HSLM -> flat softmax (species-only).
 # (C09 reference with exactly hslm changed.)
-run_id: A5
+run_id: A6
 name: flat_softmax
 priority: core
 description: 'C09 reference with one change: hierarchy off: HSLM -> flat softmax (species-only).'

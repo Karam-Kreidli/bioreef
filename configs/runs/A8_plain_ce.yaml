@@ -1,6 +1,6 @@
-# A7 — species loss CB-Focal -> plain CE (HSLM off so the species term is CE).
+# A8 — species loss CB-Focal -> plain CE (HSLM off so the species term is CE).
 # (C09 reference with hslm, loss changed; sampler matches C09 = random.)
-run_id: A7
+run_id: A8
 name: plain_ce
 priority: core
 description: 'C09 reference with the species loss changed: CB-Focal -> plain CE

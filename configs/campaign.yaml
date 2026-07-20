@@ -21,21 +21,21 @@ runs:
   - C09        # proposed reference (random sampler)
   # C08 MATANet runs from the official repo, not here — see configs/runs/C08_matanet.yaml
 
-  # --- ablations (K.2) ---
+  # --- ablations (K.2) — renumbered contiguous A1-A11 (2026-07-17) ---
   - A1         # DINOv2 backbone
-  - A2         # no MCEAM / ROI-only (context off) — also serves as the ROI-only anchor
+  - A2         # no MCEAM (context off) — also the ROI-only anchor
   - A3         # single context stream (social only)
   - A4         # attention depth 2
-  - A4b        # attention depth 4 (optional)
-  - A5         # flat softmax (no hierarchy)
-  - A6         # sampler ablation: random -> balanced (balanced-sampler variant)
-  - A7         # plain CE species loss
-  - A8         # no long-tail handling
-  - A10        # adaptation: last 2 backbone blocks unfrozen (frozen->finetuned frontier)
-  - A11        # adaptation: last 4 backbone blocks unfrozen (optional extension)
-  - A12        # adaptation: all 12 blocks unfrozen (full-FT; the honest frontier endpoint)
-  # A9 removed: mechanically identical to A2 (context_levels=0). A2 is the single
-  # no-context / ROI-only row; the config file is kept only for traceability.
+  - A5         # attention depth 4 (was A4b)
+  - A6         # flat softmax, no hierarchy (was A5)
+  - A7         # balanced sampler (was A6) — the sampler ablation
+  - A8         # plain CE species loss (was A7)
+  - A9         # adaptation: last 2 backbone blocks unfrozen (was A10)
+  - A10        # adaptation: last 4 backbone blocks unfrozen (was A11)
+  - A11        # adaptation: all 12 blocks unfrozen — full-FT frontier endpoint (was A12)
+  # Retired (configs kept as RETIRED_*.yaml for traceability):
+  #   old A8 (no_longtail) — became identical to A7/now-A8 after the sampler swap
+  #   old A9 (roi_only)    — mechanically equivalent to A2 (context_levels=0)
 
   # --- Optional tier (K.1) — breadth for the fine-tuned baselines ---
   - C04        # EfficientNetV2-S fine-tuned

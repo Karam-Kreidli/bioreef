@@ -1,9 +1,9 @@
-# A6 — sampler ablation: random -> balanced. (C09 reference with exactly sampler
+# A7 — sampler ablation: random -> balanced. (C09 reference with exactly sampler
 # changed.) On this long-tailed benchmark balanced sampling UNDERPERFORMS the
 # random-sampler reference (C09) on macroAcc, HD and top1 — reported as the
 # sampler-choice finding. NOTE: filename kept as A6_random_sampler.yaml for git
 # history; the run's name/slug is A6_balanced_sampler (it IS the balanced run).
-run_id: A6
+run_id: A7
 name: balanced_sampler
 priority: core
 description: 'C09 reference with one change: sampler random -> balanced.'

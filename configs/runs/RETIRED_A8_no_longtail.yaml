@@ -1,0 +1,33 @@
+# A8 — RETIRED: now mechanically identical to A7. Do not run; not a result row.
+#
+# A8's premise was "(CB-Focal+balanced) -> (CE+random)", written when the C09
+# reference used the BALANCED sampler. After the reference was swapped to random,
+# the sampler half of that change became a no-op, leaving A8 with exactly A7's
+# fields (hslm:false, loss:ce, sampler:random) — one distinct configuration, so
+# only one result can come from the two. A7 (plain CE) is the surviving row; the
+# sampler axis is covered by A6 (balanced-sampler ablation).
+#
+# Kept for traceability only. Removed from configs/campaign.yaml.
+run_id: A8
+name: no_longtail
+priority: retired
+description: 'RETIRED — identical to A7 after the reference sampler swap (see header).'
+model_family: dino
+backbone: dinov3
+context_levels: 3
+attention_depth: 1
+unfreeze_blocks: 0
+hslm: false
+loss: ce
+sampler: random
+family_weight: 3.0
+genus_weight: 2.0
+species_weight: 1.0
+epochs: 60
+warmup_epochs: 3
+batch_size: 32
+lr: 0.0001
+seeds:
+- 0
+- 1
+- 2

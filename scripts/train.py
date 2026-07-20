@@ -22,7 +22,7 @@ Without --run_id the config is assembled from the ablation flags (dino one-offs)
     --no_hslm                    (A5: flat softmax)
     --sampler random             (A6)
     --loss ce                    (A7)
-    --no_hslm --loss ce --sampler random   (A8)
+    --no_hslm --loss ce          (A7; A8 retired — it duplicated A7)
 """
 
 import argparse
@@ -92,10 +92,14 @@ def parse_args():
     p.add_argument("--beta", type=float, default=0.9999)
     p.add_argument("--gamma", type=float, default=2.0)
     # Optimisation
-    p.add_argument("--epochs", type=int, default=30)
-    p.add_argument("--warmup_epochs", type=int, default=3)
-    p.add_argument("--batch_size", type=int, default=32)
-    p.add_argument("--lr", type=float, default=1e-4)
+    p.add_argument("--epochs", type=int, default=None,
+                   help="override the run config's epochs (default: use the config)")
+    p.add_argument("--warmup_epochs", type=int, default=None,
+                   help="override the run config's warmup (default: use the config)")
+    p.add_argument("--batch_size", type=int, default=None,
+                   help="override the run config's batch size (default: use the config)")
+    p.add_argument("--lr", type=float, default=None,
+                   help="override the run config's lr (default: use the config)")
     p.add_argument("--weight_decay", type=float, default=0.01)
     p.add_argument("--ema_decay", type=float, default=0.999)
     p.add_argument("--num_workers", type=int, default=4)
@@ -135,9 +139,19 @@ def build_run_config(args) -> RunConfig:
             family_weight=args.family_weight, genus_weight=args.genus_weight,
             species_weight=args.species_weight,
         )
-    # CLI optimisation flags always win (train.py owns the training budget).
-    rc.epochs, rc.warmup_epochs = args.epochs, args.warmup_epochs
-    rc.batch_size, rc.lr = args.batch_size, args.lr
+    # CLI optimisation flags override ONLY when explicitly passed (default None).
+    # Previously these were argparse defaults (epochs=30), which silently
+    # overwrote the run YAML's 60 — so `train.py --run_id C09` trained a 30-epoch
+    # model while run.py trained 60, i.e. the DDP path did not reproduce the
+    # single-GPU panel. Explicit flags still win; absent flags keep the config.
+    if args.epochs is not None:
+        rc.epochs = args.epochs
+    if args.warmup_epochs is not None:
+        rc.warmup_epochs = args.warmup_epochs
+    if args.batch_size is not None:
+        rc.batch_size = args.batch_size
+    if args.lr is not None:
+        rc.lr = args.lr
     return rc
 
 
@@ -200,7 +214,7 @@ def main():
     test_dl = None
     if is_main:
         test_dl = DataLoader(FishCropDataset(test_s, is_train=False),
-                             batch_size=args.batch_size, shuffle=False,
+                             batch_size=run_cfg.batch_size, shuffle=False,
                              num_workers=args.num_workers, pin_memory=True)
 
     # Sampler (ablation A6/A8).
@@ -214,9 +228,9 @@ def main():
         train_sampler = DistributedSampler(train_ds, shuffle=True) if is_dist() else None
         shuffle = train_sampler is None
 
-    train_dl = DataLoader(train_ds, batch_size=args.batch_size, sampler=train_sampler,
+    train_dl = DataLoader(train_ds, batch_size=run_cfg.batch_size, sampler=train_sampler,
                           shuffle=shuffle, num_workers=args.num_workers, pin_memory=True)
-    val_dl = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False,
+    val_dl = DataLoader(val_ds, batch_size=run_cfg.batch_size, shuffle=False,
                         num_workers=args.num_workers, pin_memory=True)
 
     model = build_model(run_cfg, num_classes).to(device)
@@ -247,23 +261,23 @@ def main():
     else:
         criterion = nn.CrossEntropyLoss()
 
-    optimizer = optim.AdamW(trainable, lr=args.lr * world_size, weight_decay=args.weight_decay)
-    if args.warmup_epochs > 0:
-        warm = torch.optim.lr_scheduler.LinearLR(optimizer, 1e-2, 1.0, args.warmup_epochs)
-        cos = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs - args.warmup_epochs)
-        scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer, [warm, cos], [args.warmup_epochs])
+    optimizer = optim.AdamW(trainable, lr=run_cfg.lr * world_size, weight_decay=args.weight_decay)
+    if run_cfg.warmup_epochs > 0:
+        warm = torch.optim.lr_scheduler.LinearLR(optimizer, 1e-2, 1.0, run_cfg.warmup_epochs)
+        cos = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=run_cfg.epochs - run_cfg.warmup_epochs)
+        scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer, [warm, cos], [run_cfg.warmup_epochs])
     else:
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=run_cfg.epochs)
 
     scaler = torch.amp.GradScaler("cuda")
     ema = EMA(core, decay=args.ema_decay)
     best_hd, best_val, best_state = float("inf"), None, None
 
-    for epoch in range(1, args.epochs + 1):
+    for epoch in range(1, run_cfg.epochs + 1):
         if hasattr(train_sampler, "set_epoch"):
             train_sampler.set_epoch(epoch)
         model.train()
-        desc = f"{run_cfg.slug} s{args.seed} ep{epoch}/{args.epochs}"
+        desc = f"{run_cfg.slug} s{args.seed} ep{epoch}/{run_cfg.epochs}"
         it = tqdm(train_dl, desc=desc) if is_main else train_dl
         for batch in it:
             streams = {k: v.to(device) for k, v in batch["streams"].items()}

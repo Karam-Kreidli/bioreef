@@ -1,13 +1,13 @@
-# A11 — adaptation depth: frozen -> last 4 blocks unfrozen.
+# A10 — adaptation depth: frozen -> last 4 blocks unfrozen.
 # (C09 reference with exactly unfreeze_blocks changed.)
 #
-# The second point on the frozen->fine-tuned frontier (see A10). Together
+# The second point on the frozen->fine-tuned frontier (see A9). Together
 # C09 (0) -> A10 (2) -> A11 (4) -> C06/C07 (all) trace how accuracy scales with
 # adaptation depth, and whether it saturates before full fine-tuning.
 #
 # unfreeze_blocks=4 unfreezes the final 4 of 12 transformer blocks (+ final
 # layernorm): ~28.4M of 86.6M backbone params become trainable (verified).
-run_id: A11
+run_id: A10
 name: unfreeze4
 priority: optional
 description: 'C09 reference with one change: backbone frozen -> last 4 blocks unfrozen.'

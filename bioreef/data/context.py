@@ -69,8 +69,17 @@ class ContextHarvester:
         return canvas
 
     def _normalize(self, image):
-        """To float tensor + ImageNet Z-score (mandatory for DINO features)."""
-        img = image.astype(np.float32) / 255.0
+        """BGR uint8 crop -> RGB float tensor + ImageNet Z-score.
+
+        The BGR->RGB conversion is REQUIRED, not cosmetic: cv2.imread returns BGR,
+        but DINO/timm ImageNet-pretrained weights were trained on RGB, and
+        IMAGENET_MEAN/STD are per-channel constants in RGB order. Normalizing BGR
+        with RGB statistics feeds every pretrained backbone channel-swapped input
+        (it also mismatches the R and B mean/std). Comparisons stay internally
+        consistent either way, but absolute accuracy suffers — so convert here,
+        the single gateway from uint8 crops to model tensors."""
+        img = image[:, :, ::-1]                       # BGR -> RGB
+        img = np.ascontiguousarray(img, dtype=np.float32) / 255.0
         img = (img - self.IMAGENET_MEAN) / self.IMAGENET_STD
         return torch.from_numpy(img).permute(2, 0, 1)  # (3, H, W)
 
