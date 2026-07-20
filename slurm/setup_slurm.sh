@@ -28,6 +28,11 @@
 set -euo pipefail
 
 # ===================== CONFIG — EDIT THESE ==================================
+# Pass this in the ENVIRONMENT, never by editing this line:
+#     HF_TOKEN=hf_xxxxx bash slurm/setup_slurm.sh
+# The ${VAR:-default} form already lets the env var win, so there is no reason
+# to paste a real token here — and a token committed to git stays in the history
+# even after the line is edited.
 HF_TOKEN="${HF_TOKEN:-PUT_YOUR_HF_TOKEN_HERE}"
 REPO_URL="${REPO_URL:-https://github.com/Karam-Kreidli/bioreef.git}"
 WORKDIR="${WORKDIR:-$HOME/bioreef-classify}"

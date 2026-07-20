@@ -13,7 +13,7 @@ module load anaconda3 && source ~/.bashrc
 
 git clone https://github.com/Karam-Kreidli/bioreef.git ~/bioreef-classify
 cd ~/bioreef-classify
-HF_TOKEN=hf_xxxxx bash slurm/setup_slurm.sh
+HF_TOKEN=hf_xxxxx bash slurm/setup_slurm.sh   # pass it here, don't edit the script
 
 # --- then, per experiment ----------------------------------------------
 sbatch slurm/job_bioreef.sh C09 0        # one run, one seed
