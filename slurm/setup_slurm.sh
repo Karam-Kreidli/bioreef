@@ -63,7 +63,10 @@ command -v conda >/dev/null || die "conda not on PATH after module load"
 # Create with an EXPLICIT python. `conda create -n env` with no package pins
 # gives an env with no python at all, and the first pip call then silently
 # installs into the base environment.
-if ! conda env list | grep -qE "^${ENVNAME}\s"; then
+# Match on the env's PATH, not the name column: `conda env list` pads names and
+# can render the active one with a '*', so "^name\s" misses an existing env and
+# silently recreates it on every re-run.
+if ! conda env list | awk '{print $NF}' | grep -qx ".*/envs/${ENVNAME}"; then
   say "creating env '$ENVNAME' (python 3.11)"
   conda create -y -n "$ENVNAME" python=3.11
 else
@@ -91,7 +94,13 @@ pip install --quiet --upgrade pip
 python -c "import torch,sys; sys.exit(0 if torch.version.cuda else 1)" 2>/dev/null \
   && say "torch with CUDA already present" \
   || { say "installing torch (CUDA 12.1 wheels)"
-       pip install --quiet torch torchvision --index-url https://download.pytorch.org/whl/cu121; }
+       # --extra-index-url, NOT --index-url. --index-url REPLACES PyPI, so pip
+       # then looks for every transitive dependency (numpy and its build deps
+       # like meson-python) on download.pytorch.org, which only hosts torch
+       # wheels — the install dies on "No matching distribution for
+       # meson-python". --extra-index-url adds the torch index alongside PyPI.
+       pip install --quiet torch torchvision \
+         --extra-index-url https://download.pytorch.org/whl/cu121; }
 pip install --quiet -r requirements.txt
 python -c "import transformers, timm; print('transformers', transformers.__version__, '| timm', timm.__version__)"
 # NOTE: torch.cuda.is_available() is False here and that is fine — no GPU on the
