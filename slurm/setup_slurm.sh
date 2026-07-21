@@ -67,10 +67,20 @@ command -v conda >/dev/null || die "conda not on PATH after module load"
 # can render the active one with a '*', so "^name\s" misses an existing env and
 # silently recreates it on every re-run.
 if ! conda env list | awk '{print $NF}' | grep -qx ".*/envs/${ENVNAME}"; then
-  say "creating env '$ENVNAME' (python 3.11)"
-  conda create -y -n "$ENVNAME" python=3.11
+  say "creating env '$ENVNAME' (python 3.11 + conda-built numpy)"
+  # numpy comes from CONDA, not pip. This box is RHEL7-era (glibc 2.17, GCC
+  # 7.3.1); current numpy wheels need a newer glibc, so pip falls back to
+  # building from source and dies on "NumPy requires GCC >= 9.3". Conda ships
+  # a numpy compiled against its own toolchain, sidestepping the system GCC.
+  conda create -y -n "$ENVNAME" python=3.11 "numpy>=1.24,<2"
 else
   say "env '$ENVNAME' already exists"
+  # An env created by an earlier version of this script has no conda numpy, so
+  # pip would try (and fail) to build it from source. Install it via conda here
+  # so re-running this script repairs that env instead of requiring a delete.
+  conda install -y -n "$ENVNAME" "numpy>=1.24,<2" >/dev/null 2>&1 \
+    && say "ensured conda-built numpy in '$ENVNAME'" \
+    || say "note: could not conda-install numpy (may already be present)"
 fi
 # `conda activate` needs the shell hook; `source activate` is the older form the
 # cluster docs use. Use the hook when we can, fall back to what they documented.
@@ -91,6 +101,10 @@ cd "$WORKDIR"
 # --- 3. python deps --------------------------------------------------------
 say "Python deps"
 pip install --quiet --upgrade pip
+# --only-binary=:all: for every pip call below. On this old toolchain a missing
+# wheel silently becomes a source build that fails deep in a compiler error;
+# this turns that into an immediate, readable "no wheel available" instead.
+export PIP_ONLY_BINARY=":all:"
 python -c "import torch,sys; sys.exit(0 if torch.version.cuda else 1)" 2>/dev/null \
   && say "torch with CUDA already present" \
   || { say "installing torch (CUDA 12.1 wheels)"
@@ -101,7 +115,12 @@ python -c "import torch,sys; sys.exit(0 if torch.version.cuda else 1)" 2>/dev/nu
        # meson-python". --extra-index-url adds the torch index alongside PyPI.
        pip install --quiet torch torchvision \
          --extra-index-url https://download.pytorch.org/whl/cu121; }
-pip install --quiet -r requirements.txt
+# requirements.txt says numpy>=1.24, which would let pip pull 2.x over conda's
+# build and re-trigger the source compile. Keep whatever conda installed.
+# (The code itself is numpy-2 clean — this pin is a platform workaround for the
+# old glibc/GCC on this cluster, not a code constraint.)
+pip install --quiet -r requirements.txt "numpy<2"
+python -c "import numpy; print('numpy', numpy.__version__)"
 python -c "import transformers, timm; print('transformers', transformers.__version__, '| timm', timm.__version__)"
 # NOTE: torch.cuda.is_available() is False here and that is fine — no GPU on the
 # login node. The job script re-checks it on the compute node, where it matters.
