@@ -11,20 +11,20 @@ git clone https://github.com/Karam-Kreidli/bioreef.git ~/bioreef-classify
 
 # rsync creates only the LAST path component, so make the parents now.
 # (setup_slurm.sh also does this, but it needs the data to already be there.)
-mkdir -p ~/bioreef-classify/data/{frames,metadata}
+mkdir -p ~/bioreef-classify/bioreef/data/{frames,metadata}
 
 # --- 2. send the data, FROM YOUR VM (a separate terminal) ---------------
 # rsync, not tar+scp: needs no second copy on the VM's disk (the crops are
 # already-compressed PNGs, so tar.gz saves almost nothing) and it RESUMES if
 # the connection drops — which matters at ~76k files.
-# Paths mirror the VM layout: data/ at the repo ROOT (not inside bioreef/,
-# which is the Python package). Trailing slash on the source matters —
-# "frames/" copies the CONTENTS; "frames" would nest it as frames/frames/.
-cd ~/bioreef-classify        # or wherever the repo is on the VM
-rsync -avP data/frames/ \
-  oelmutasim@44.210.222.21:~/bioreef-classify/data/frames/
-rsync -avP data/metadata/ \
-  oelmutasim@44.210.222.21:~/bioreef-classify/data/metadata/
+# Paths mirror the VM layout: the data sits INSIDE bioreef/, next to the .py
+# sources. Trailing slash on the source matters — "frames/" copies the
+# CONTENTS; "frames" would nest it as frames/frames/.
+cd ~/Desktop/bioreef-classify        # repo root on the VM
+rsync -avP bioreef/data/metadata/ \
+  oelmutasim@44.210.222.21:~/bioreef-classify/bioreef/data/metadata/
+rsync -avP bioreef/data/frames/ \
+  oelmutasim@44.210.222.21:~/bioreef-classify/bioreef/data/frames/
 
 # --- 3. back on the login node ------------------------------------------
 cd ~/bioreef-classify

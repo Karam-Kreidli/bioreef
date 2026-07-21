@@ -16,14 +16,17 @@
 # ── WHAT YOU MUST PROVIDE ───────────────────────────────────────────────────
 #   HF_TOKEN : HuggingFace token WITH access to the gated DINOv3 repo
 #              (facebook/dinov3-vitb16-pretrain-lvd1689m).
-#   the data : frame_metadata.csv + frames/ — scp'd from your VM (see below).
+#   the data : bioreef/data/{metadata,frames}/ — rsync'd from your VM (below).
 #
 # ── GETTING THE DATA THERE ──────────────────────────────────────────────────
-# From the machine that HAS the data (your VM), not from here:
-#     tar czf ozfish_bench.tar.gz frame_metadata.csv frames/
-#     scp ozfish_bench.tar.gz oelmutasim@44.210.222.21:/home/oelmutasim/
-# ~76k crops is large; if scp keeps dropping, use `rsync -avP --partial` which
-# resumes instead of restarting.
+# From the repo root on the machine that HAS the data (your VM), not from here.
+# rsync needs the target's PARENT to exist and creates only the last component,
+# so make the dirs on the cluster first:
+#     ssh oelmutasim@44.210.222.21 'mkdir -p ~/bioreef-classify/bioreef/data/{frames,metadata}'
+#     rsync -avP bioreef/data/metadata/ oelmutasim@...:~/bioreef-classify/bioreef/data/metadata/
+#     rsync -avP bioreef/data/frames/   oelmutasim@...:~/bioreef-classify/bioreef/data/frames/
+# The trailing slash on the SOURCE matters: "frames/" copies the contents,
+# "frames" would nest it as frames/frames/. rsync -P resumes on a dropped link.
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -152,10 +155,10 @@ PY
 
 # --- 5. dataset ------------------------------------------------------------
 say "Dataset"
-# Canonical layout (matches the VM): data/ at the REPO ROOT — not inside the
-# bioreef/ package, which holds code and stays tracked by git.
-CSV_PATH="$WORKDIR/data/metadata/frame_metadata.csv"
-IMG_PATH="$WORKDIR/data/frames"
+# Canonical layout (matches the VM): the data sits INSIDE the bioreef/ package
+# dir, alongside the .py sources — bioreef/data/{frames,metadata}/.
+CSV_PATH="$WORKDIR/bioreef/data/metadata/frame_metadata.csv"
+IMG_PATH="$WORKDIR/bioreef/data/frames"
 mkdir -p "$(dirname "$CSV_PATH")" "$IMG_PATH"
 
 if [ ! -f "$CSV_PATH" ] || [ -z "$(ls -A "$IMG_PATH" 2>/dev/null)" ]; then
@@ -173,18 +176,18 @@ the transfer below will work. From the machine that HAS the data (your VM):
   A) rsync the directories across — no extra disk needed on the VM, and it
      RESUMES if the connection drops (best for ~76k files). Run FROM the repo
      root on the VM:
-       rsync -avP data/frames/ \\
+       rsync -avP bioreef/data/frames/ \\
          oelmutasim@44.210.222.21:$IMG_PATH/
-       rsync -avP data/metadata/ \\
+       rsync -avP bioreef/data/metadata/ \\
          oelmutasim@44.210.222.21:$(dirname "$CSV_PATH")/
 
   B) stream a tar over ssh — no temp file on the VM either, but it restarts
      from zero if it breaks:
-       tar cf - data/frames data/metadata | \\
+       tar cf - bioreef/data/frames bioreef/data/metadata | \\
          ssh oelmutasim@44.210.222.21 'tar xf - -C $WORKDIR'
 
   C) if you already made a tarball, put it at \$TARBALL ($TARBALL) and re-run.
-     It must expand to data/{frames,metadata}/ under the repo root.
+     It must expand to bioreef/data/{frames,metadata}/ under the repo root.
 
 then re-run this script."
   fi
