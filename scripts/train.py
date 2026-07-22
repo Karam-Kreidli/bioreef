@@ -349,6 +349,8 @@ def main():
                     backbone=run_cfg.backbone, context_levels=run_cfg.context_levels,
                     attention_depth=run_cfg.attention_depth,
                     unfreeze_blocks=run_cfg.unfreeze_blocks,
+                    probe=run_cfg.probe,   # C01 uses "linear"; without it the
+                                           # reloaded head is an MLP -> state-dict mismatch
                 ).__dict__
             torch.save(ckpt, args.out)
             print(f"  [+] standalone checkpoint -> {args.out}")

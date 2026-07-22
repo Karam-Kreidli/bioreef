@@ -102,7 +102,7 @@ def main():
 
     print(f"wrote {len(rows)} crops across {num_classes} species -> {out_path}")
     for fold in ("train", "val", "test"):
-        n = sum(1 for r in rows if r[2] == fold)
+        n = sum(1 for r in rows if r[3] == fold)   # r[3]=fold; r[2] is deployment
         print(f"  {fold:5s}: {n}")
 
 

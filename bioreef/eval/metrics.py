@@ -131,7 +131,10 @@ def hierarchical_metrics(
         "species_accuracy": species / total if total else 0.0,        # = micro acc
         "genus_accuracy": (species + genus) / total if total else 0.0,
         "family_accuracy": (species + genus + family) / total if total else 0.0,
-        "cross_family_error_rate": levels["root"] / total if total else 0.0,
+        # "root" = wrong family within the tree; "unknown" = prediction outside
+        # the taxonomy entirely (e.g. an unrecognized MATANet name). Both are
+        # cross-family errors — omitting unknown under-reports the rate.
+        "cross_family_error_rate": (levels["root"] + levels.get("unknown", 0)) / total if total else 0.0,
     }
 
 

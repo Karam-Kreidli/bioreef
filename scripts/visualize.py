@@ -75,6 +75,8 @@ def load_checkpoint(path):
             context_levels=rc.get("context_levels", 3),
             attention_depth=rc.get("attention_depth", 1),
             unfreeze_blocks=rc.get("unfreeze_blocks", 0),
+            probe=rc.get("probe", "mlp"),   # C01 = "linear"; omitting it rebuilds
+                                            # an MLP head and mismatches the state dict
         )
         idx_to_sp = {int(k): v for k, v in (ckpt.get("idx_to_sp") or {}).items()}
         head_w = ckpt["model"]["head.weight"]

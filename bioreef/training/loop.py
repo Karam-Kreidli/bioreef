@@ -50,7 +50,10 @@ def probe_cache_eligible(run_cfg):
 def build_loss(run_cfg, sp_counts, idx_to_sp, tree, device):
     """Loss per the run config: HSLM (default) | CB-Focal | plain CE."""
     if run_cfg.hslm:
-        s2g, s2f, n_gen, n_fam, _ = build_taxonomy_maps(idx_to_sp, tree)
+        s2g, s2f, n_gen, n_fam, n_missing = build_taxonomy_maps(idx_to_sp, tree)
+        if n_missing:
+            raise RuntimeError(f"[hslm] {n_missing} species have no taxonomy entry; "
+                               "genus/family loss would be meaningless. Fix the CSV or disable hslm.")
         return HSLMLoss(
             sp_counts, s2g, s2f, n_gen, n_fam,
             family_weight=run_cfg.family_weight, genus_weight=run_cfg.genus_weight,
