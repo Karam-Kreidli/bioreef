@@ -78,10 +78,13 @@ def main():
     _train, _val, test_s, n_split, _c2s, sp_counts = split_from_config(
         bench.csv_path, bench.img_dir, bench,
     )
-    assert n_split == num_classes, (
-        f"split class count {n_split} != checkpoint {num_classes} — "
-        "the CSV/img_dir does not match the one trained on."
-    )
+    if n_split != num_classes:
+        # Not an assert: `python -O` strips asserts, which would silently skip
+        # this consistency guard and evaluate against a mismatched split.
+        raise SystemExit(
+            f"split class count {n_split} != checkpoint {num_classes} — "
+            "the CSV/img_dir does not match the one trained on."
+        )
     print(f"[test] {len(test_s)} crops, {num_classes} species")
 
     model = Classifier(mcfg, num_classes).to(device)

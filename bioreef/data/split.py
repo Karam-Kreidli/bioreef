@@ -198,7 +198,11 @@ def _load_rows(csv_path: str, img_dir: str, extra_img_dirs, filter_placeholders,
             if len(bad_examples) < 5:
                 bad_examples.append(f"{fname}: bbox ({bx0},{by0},{bx1},{by1})")
             continue
-        x0, y0, x1, y1 = int(bx0), int(by0), int(bx1), int(by1)
+        # floor the mins, ceil the maxes — NOT int() on all four. int() truncates,
+        # so a sub-pixel box like (1.2, 1.8) would collapse to int 1..1 = zero
+        # width AFTER passing the float check. floor/ceil keeps it >= 1px.
+        x0, y0 = math.floor(bx0), math.floor(by0)
+        x1, y1 = math.ceil(bx1), math.ceil(by1)
         raw.append({
             "img_path": img_path,
             "bbox": [x0, y0, x1 - x0, y1 - y0],  # xyxy -> xywh for ContextHarvester

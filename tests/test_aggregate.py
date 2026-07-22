@@ -20,15 +20,16 @@ def approx(a, b, tol=1e-9):
 
 
 def test_mean_std():
-    assert agg.mean_std([]) == (float("nan"), float("nan")) or math.isnan(agg.mean_std([])[0])
-    assert agg.mean_std([0.5]) == (0.5, 0.0)                 # single -> std 0
+    assert agg.mean_std([]) == (None, None)                  # empty -> None (valid JSON)
+    assert agg.mean_std([0.5]) == (0.5, None)                # single -> std UNDEFINED, not 0
     mu, sd = agg.mean_std([0.40, 0.42, 0.44])
     assert approx(mu, 0.42) and approx(sd, 0.02)             # sample std
     print("test_mean_std OK")
 
 
 def test_fmt():
-    assert agg.fmt((float("nan"), float("nan"))) == "--"
+    assert agg.fmt((None, None)) == "--"
+    assert agg.fmt((0.5, None)) == "0.500"                   # single seed: mean only
     assert agg.fmt((0.42, 0.02)) == "0.420±0.020"
     print("test_fmt OK")
 

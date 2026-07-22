@@ -22,7 +22,7 @@ import os
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -41,26 +41,29 @@ GROUPS = ("head", "medium", "tail")
 
 # --- statistics (pure) -------------------------------------------------------
 
-def mean_std(xs: List[float]) -> Tuple[float, float]:
-    """Sample mean and std. (nan, nan) for empty; std 0 for a single value."""
+def mean_std(xs: List[float]) -> Tuple[Optional[float], Optional[float]]:
+    """Sample mean and std. (None, None) for empty; (mu, None) for one value
+    (std undefined); (mu, sample-std) for n>=2. None (not NaN) so summary.json
+    stays valid JSON."""
     n = len(xs)
     if n == 0:
-        return float("nan"), float("nan")
+        return None, None
     mu = sum(xs) / n
     if n == 1:
         # std is UNDEFINED for one sample, not zero. Returning 0.0 renders as
-        # "mean ± 0.000", which reads as a stable estimate. nan -> fmt shows the
-        # bare mean instead, honestly signalling a single seed.
-        return mu, float("nan")
+        # "mean ± 0.000", which reads as a stable estimate. None -> fmt shows the
+        # bare mean, and summary.json gets `null` (valid JSON) rather than NaN
+        # (which Python emits but strict parsers reject).
+        return mu, None
     var = sum((x - mu) ** 2 for x in xs) / (n - 1)
     return mu, math.sqrt(var)
 
 
-def fmt(stat: Tuple[float, float]) -> str:
+def fmt(stat: Tuple[Optional[float], Optional[float]]) -> str:
     mu, sd = stat
-    if math.isnan(mu):
+    if mu is None:
         return "--"
-    if math.isnan(sd):          # single seed: mean only, no fake ±0.000
+    if sd is None:              # single seed: mean only, no fake ±0.000
         return f"{mu:.3f}"
     return f"{mu:.3f}±{sd:.3f}"
 
@@ -177,7 +180,11 @@ def render_markdown(groups: Dict[str, RunGroup]) -> str:
 
 
 def render_summary(groups: Dict[str, RunGroup]) -> str:
-    return json.dumps({slug: g.summary() for slug, g in groups.items()}, indent=2)
+    # allow_nan=False: reject any stray NaN/Infinity instead of emitting the
+    # non-standard tokens Python's encoder would otherwise write, keeping
+    # summary.json parseable by strict readers.
+    return json.dumps({slug: g.summary() for slug, g in groups.items()},
+                      indent=2, allow_nan=False)
 
 
 # --- orchestration -----------------------------------------------------------

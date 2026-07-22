@@ -156,6 +156,11 @@ def execute_run(run_cfg, bench, seed, args, device):
     if args.no_augment:
         run_cfg.augment = False        # augmentation ablation / diagnostic
 
+    # Re-validate AFTER overrides: --epochs can drop below warmup_epochs, which
+    # the YAML-load validation could not have caught. The resolved config is
+    # what actually trains, so it is what must be valid.
+    run_cfg._validate("<resolved runtime config>")
+
     print(f"\n{'='*60}\n[run] {run_cfg.slug}  seed={seed}  family={run_cfg.model_family}\n{'='*60}")
     set_seed(seed)
     test_metrics, val_metrics, model, idx_to_sp, num_classes = train_and_evaluate(

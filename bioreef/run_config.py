@@ -139,11 +139,23 @@ class RunConfig:
         if self.context_levels not in (0, 1, 3):
             raise ValueError(f"{path}: context_levels={self.context_levels} "
                              "must be 0, 1, or 3")
+        # attention_depth is the number of cross-attention blocks per context
+        # stream. 0 builds EMPTY attention stacks: context is encoded but never
+        # attended to, so the model silently ignores all context while still
+        # being labelled multi-context. Must be positive.
+        if self.attention_depth <= 0:
+            raise ValueError(f"{path}: attention_depth={self.attention_depth} "
+                             "must be > 0 (0 silently disables all context)")
+        if self.unfreeze_blocks < 0:
+            raise ValueError(f"{path}: unfreeze_blocks={self.unfreeze_blocks} "
+                             "must be >= 0")
         if self.epochs <= 0 or self.batch_size <= 0 or self.lr <= 0:
             raise ValueError(f"{path}: epochs/batch_size/lr must be positive")
         if self.warmup_epochs >= self.epochs:
             raise ValueError(f"{path}: warmup_epochs ({self.warmup_epochs}) "
                              f"must be < epochs ({self.epochs})")
+        if min(self.family_weight, self.genus_weight, self.species_weight) < 0:
+            raise ValueError(f"{path}: hierarchy weights must be >= 0")
 
     @classmethod
     def find(cls, run_id: str, runs_dir: Optional[str] = None) -> "RunConfig":

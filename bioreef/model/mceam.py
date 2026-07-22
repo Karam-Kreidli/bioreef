@@ -107,6 +107,12 @@ class MCEAM(nn.Module):
         # num_context_levels streams, and CONTEXT_STREAMS has length 3, so e.g.
         # 4 would build 3 attention blocks but a fusion layer expecting 4 vectors
         # -> a shape error later. 0 context must bypass MCEAM entirely (build.py).
+        if attention_depth <= 0:
+            raise ValueError(
+                f"MCEAM attention_depth must be > 0, got {attention_depth}: "
+                "a depth of 0 builds empty attention stacks and silently ignores "
+                "all context (the attended output is just the ROI query)."
+            )
         if num_context_levels not in (1, 3):
             raise ValueError(
                 f"MCEAM num_context_levels must be 1 or 3, got {num_context_levels}. "
