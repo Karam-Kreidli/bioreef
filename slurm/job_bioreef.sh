@@ -40,7 +40,20 @@ nvidia-smi
 
 module load anaconda3 2>/dev/null || module load anaconda3/3.11 2>/dev/null || true
 eval "$(conda shell.bash hook)" 2>/dev/null || true
-conda activate "$ENVNAME" 2>/dev/null || source activate "$ENVNAME"
+# Activation is allowed to "fail" (non-zero) without aborting the whole job:
+# under `set -e` a failing `conda activate` on a compute node kills the script
+# silently, right after nvidia-smi, with an empty .err — exactly the symptom we
+# hit. Try both forms, then VERIFY we actually landed in the env and say so.
+set +e
+conda activate "$ENVNAME" 2>/dev/null || source activate "$ENVNAME" 2>/dev/null
+set -e
+if [ "$(basename "${CONDA_PREFIX:-none}")" != "$ENVNAME" ]; then
+  echo "FATAL: could not activate conda env '$ENVNAME' (CONDA_PREFIX=${CONDA_PREFIX:-unset})." >&2
+  echo "  conda on PATH: $(command -v conda || echo no)" >&2
+  echo "  envs: $(conda env list 2>&1 | tr '\n' ';')" >&2
+  exit 1
+fi
+echo "[env] active: $CONDA_PREFIX | python $(python --version 2>&1)"
 
 # Ignore ~/.local: a stale user-site there (old torch/ultralytics) would
 # otherwise shadow the conda env and import a torch needing libcusparseLt.so.0.
