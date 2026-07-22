@@ -48,14 +48,21 @@ def mean_std(xs: List[float]) -> Tuple[float, float]:
         return float("nan"), float("nan")
     mu = sum(xs) / n
     if n == 1:
-        return mu, 0.0
+        # std is UNDEFINED for one sample, not zero. Returning 0.0 renders as
+        # "mean ± 0.000", which reads as a stable estimate. nan -> fmt shows the
+        # bare mean instead, honestly signalling a single seed.
+        return mu, float("nan")
     var = sum((x - mu) ** 2 for x in xs) / (n - 1)
     return mu, math.sqrt(var)
 
 
 def fmt(stat: Tuple[float, float]) -> str:
     mu, sd = stat
-    return "--" if math.isnan(mu) else f"{mu:.3f}±{sd:.3f}"
+    if math.isnan(mu):
+        return "--"
+    if math.isnan(sd):          # single seed: mean only, no fake ±0.000
+        return f"{mu:.3f}"
+    return f"{mu:.3f}±{sd:.3f}"
 
 
 # --- data model --------------------------------------------------------------
@@ -125,10 +132,18 @@ def load_results(results_dir: str) -> Dict[str, RunGroup]:
     return groups
 
 
+def _run_key(run_id: str) -> Tuple:
+    """Natural sort key: split 'A10' -> ('A', 10) so A2 precedes A10 (string
+    sort gives A1, A10, A11, A2...). Panel (C..) sorts before ablations (A..)."""
+    import re
+    m = re.fullmatch(r"([A-Za-z]+)(\d+)", run_id)
+    prefix, num = (m.group(1), int(m.group(2))) if m else (run_id, -1)
+    return (0 if prefix.startswith("C") else 1, prefix, num)
+
+
 def report_order(groups: Dict[str, RunGroup]) -> List[str]:
-    """Panel configs (C..) first by id, then ablations (A..)."""
-    return sorted(groups, key=lambda s: (0 if groups[s].run_id.startswith("C") else 1,
-                                         groups[s].run_id))
+    """Panel configs (C..) first, then ablations (A..), each in numeric order."""
+    return sorted(groups, key=lambda s: _run_key(groups[s].run_id))
 
 
 # --- render (formatting only) ------------------------------------------------

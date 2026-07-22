@@ -24,6 +24,7 @@ study design in the paper (Section 3).
 """
 
 import logging
+import math
 import os
 from collections import Counter, defaultdict
 from typing import Dict, List, Tuple
@@ -137,6 +138,8 @@ def _load_rows(csv_path: str, img_dir: str, extra_img_dirs, filter_placeholders,
     raw = []
     n_missing_img = 0
     missing_examples = []
+    bad_bbox = 0
+    bad_examples = []
     for _, row in df.iterrows():
         epithet = row.get("species")
         if not isinstance(epithet, str) or epithet.strip() == "":
@@ -162,7 +165,24 @@ def _load_rows(csv_path: str, img_dir: str, extra_img_dirs, filter_placeholders,
                 missing_examples.append(fname)
             continue
 
-        x0, y0, x1, y1 = int(row["x0"]), int(row["y0"]), int(row["x1"]), int(row["y1"])
+        # Validate the box before it becomes a crop. A degenerate box (x1<=x0)
+        # yields a zero/negative-size crop that crashes deep in a DataLoader
+        # worker (or, after 5x context expansion, a huge allocation). NaN/inf
+        # coords also slip past int() as garbage. Collect and report rather than
+        # dying on the first, so a data-quality pass sees them all at once.
+        try:
+            bx0, by0, bx1, by1 = (float(row["x0"]), float(row["y0"]),
+                                  float(row["x1"]), float(row["y1"]))
+        except (ValueError, TypeError):
+            bad_bbox += 1
+            if len(bad_examples) < 5: bad_examples.append(f"{fname}: non-numeric bbox")
+            continue
+        if not all(map(math.isfinite, (bx0, by0, bx1, by1))) or bx1 <= bx0 or by1 <= by0:
+            bad_bbox += 1
+            if len(bad_examples) < 5:
+                bad_examples.append(f"{fname}: bbox ({bx0},{by0},{bx1},{by1})")
+            continue
+        x0, y0, x1, y1 = int(bx0), int(by0), int(bx1), int(by1)
         raw.append({
             "img_path": img_path,
             "bbox": [x0, y0, x1 - x0, y1 - y0],  # xyxy -> xywh for ContextHarvester
@@ -191,6 +211,12 @@ def _load_rows(csv_path: str, img_dir: str, extra_img_dirs, filter_placeholders,
         logger.warning("%d rows skipped (image not found on disk). The benchmark is "
                        "defined by the RESOLVED rows — set data.strict_images: true "
                        "to make this an error instead.", n_missing_img)
+    if bad_bbox:
+        # Always loud: a malformed box is a data error, not a benchmark-scope
+        # choice like a missing image, so this warns regardless of strict_images.
+        logger.warning("%d rows skipped (invalid bounding box: non-numeric, "
+                       "non-finite, or x1<=x0 / y1<=y0). Examples: %s",
+                       bad_bbox, "; ".join(bad_examples))
     return raw
 
 

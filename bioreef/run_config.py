@@ -109,10 +109,41 @@ class RunConfig:
             data = yaml.safe_load(f) or {}
         cfg = cls()
         valid = {f.name for f in fields(cls)}
+        # Unknown keys are fatal, not ignored: a typo like `samplar: balanced`
+        # would otherwise vanish and the run would use the default sampler.
+        unknown = [k for k in data if k not in valid]
+        if unknown:
+            raise ValueError(f"{path}: unknown config key(s) {unknown}. "
+                             f"Valid keys: {sorted(valid)}")
         for k, v in data.items():
-            if k in valid and v is not None:
+            if v is not None:
                 setattr(cfg, k, v)
+        cfg._validate(path)
         return cfg
+
+    def _validate(self, path: str = "<config>") -> None:
+        """Reject invalid ENUM VALUES. A misspelled value (loss: cbfoca1) would
+        otherwise fall through to a default (cross-entropy) and silently run a
+        different experiment than the config names."""
+        checks = {
+            "model_family": ("dino", "timm", "matanet"),
+            "loss": ("cbfocal", "ce"),
+            "sampler": ("balanced", "random"),
+            "probe": ("mlp", "linear"),
+        }
+        for field_name, allowed in checks.items():
+            val = getattr(self, field_name)
+            if val not in allowed:
+                raise ValueError(f"{path}: {field_name}={val!r} invalid; "
+                                 f"must be one of {allowed}")
+        if self.context_levels not in (0, 1, 3):
+            raise ValueError(f"{path}: context_levels={self.context_levels} "
+                             "must be 0, 1, or 3")
+        if self.epochs <= 0 or self.batch_size <= 0 or self.lr <= 0:
+            raise ValueError(f"{path}: epochs/batch_size/lr must be positive")
+        if self.warmup_epochs >= self.epochs:
+            raise ValueError(f"{path}: warmup_epochs ({self.warmup_epochs}) "
+                             f"must be < epochs ({self.epochs})")
 
     @classmethod
     def find(cls, run_id: str, runs_dir: Optional[str] = None) -> "RunConfig":

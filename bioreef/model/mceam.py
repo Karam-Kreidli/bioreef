@@ -103,6 +103,15 @@ class MCEAM(nn.Module):
         use_checkpointing: bool = False,
     ):
         super().__init__()
+        # Only 1 or 3 are valid: the fusion layer is sized for exactly
+        # num_context_levels streams, and CONTEXT_STREAMS has length 3, so e.g.
+        # 4 would build 3 attention blocks but a fusion layer expecting 4 vectors
+        # -> a shape error later. 0 context must bypass MCEAM entirely (build.py).
+        if num_context_levels not in (1, 3):
+            raise ValueError(
+                f"MCEAM num_context_levels must be 1 or 3, got {num_context_levels}. "
+                "Use context_levels: 0 (no MCEAM) for the ROI-only path."
+            )
         self.embed_dim = embed_dim
         self.output_dim = output_dim
         self.num_context_levels = num_context_levels
@@ -169,10 +178,17 @@ class MCEAM(nn.Module):
         attended_features = []
         attention_maps = {}
 
+        # Every configured context stream is REQUIRED. Skipping a missing one
+        # would make `concat` narrower than fusion_ffn expects and fail with an
+        # opaque matmul shape error; name the missing stream instead.
+        missing = [s for s in self.cross_attention_blocks if s not in backbone_features]
+        if missing:
+            raise KeyError(
+                f"MCEAM: required context stream(s) {missing} absent from backbone "
+                f"features (have {sorted(backbone_features)}). The dataset/backbone "
+                "must emit every configured stream."
+            )
         for stream_name, attn_blocks in self.cross_attention_blocks.items():
-            if stream_name not in backbone_features:
-                logger.warning(f"Context stream '{stream_name}' missing; skipping.")
-                continue
             _, context_patches = backbone_features[stream_name]  # (B, N, D)
             attended, attn_weights = self._attend(
                 attn_blocks, roi_cls, context_patches, return_attention
