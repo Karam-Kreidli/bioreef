@@ -42,6 +42,10 @@ module load anaconda3 2>/dev/null || module load anaconda3/3.11 2>/dev/null || t
 eval "$(conda shell.bash hook)" 2>/dev/null || true
 conda activate "$ENVNAME" 2>/dev/null || source activate "$ENVNAME"
 
+# Ignore ~/.local: a stale user-site there (old torch/ultralytics) would
+# otherwise shadow the conda env and import a torch needing libcusparseLt.so.0.
+export PYTHONNOUSERSITE=1
+
 cd "$WORKDIR"
 
 # Compute nodes often have no outbound internet. setup_slurm.sh pre-cached every

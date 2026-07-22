@@ -92,6 +92,13 @@ conda activate "$ENVNAME" 2>/dev/null || source activate "$ENVNAME"
 python --version
 [ "$(basename "$CONDA_PREFIX")" = "$ENVNAME" ] || die "env did not activate (CONDA_PREFIX=$CONDA_PREFIX)"
 
+# Ignore the user site-packages (~/.local). This box has a stale ~/.local from
+# another project (ultralytics, an older torch) that pip and python both pick up
+# ahead of the conda env — that is why torch landed in ~/.local and imported a
+# build needing libcusparseLt.so.0, which this box does not have. With this set,
+# every python/pip below sees ONLY the env.
+export PYTHONNOUSERSITE=1
+
 # --- 2. repo ---------------------------------------------------------------
 say "Repo -> $WORKDIR"
 if [ ! -d "$WORKDIR/.git" ]; then
@@ -103,27 +110,46 @@ cd "$WORKDIR"
 
 # --- 3. python deps --------------------------------------------------------
 say "Python deps"
-pip install --quiet --upgrade pip
+# Always the ENV's pip, never a user/base one: `python -m pip` binds to the
+# interpreter we just activated. --no-user forbids installing into ~/.local even
+# if some global pip config re-enables it.
+PIP="python -m pip install --quiet --no-user"
+$PIP --upgrade pip
+
+# A previous run leaked torch into ~/.local (before PYTHONNOUSERSITE was set).
+# --no-user stops NEW installs going there, but pip still SEES that torch as
+# "already installed" and can skip reinstalling into the env; worse, python
+# imports it ahead of the env copy. Remove the leaked user copy — only ~/.local.
+if [ -d "$HOME/.local/lib/python3.11/site-packages/torch" ]; then
+  say "removing leaked torch from ~/.local (was shadowing the env)"
+  rm -rf "$HOME/.local/lib/python3.11/site-packages/torch" \
+         "$HOME/.local/lib/python3.11/site-packages/torchvision" 2>/dev/null || true
+fi
 # --only-binary=:all: for every pip call below. On this old toolchain a missing
 # wheel silently becomes a source build that fails deep in a compiler error;
 # this turns that into an immediate, readable "no wheel available" instead.
 export PIP_ONLY_BINARY=":all:"
-python -c "import torch,sys; sys.exit(0 if torch.version.cuda else 1)" 2>/dev/null \
-  && say "torch with CUDA already present" \
-  || { say "installing torch (CUDA 12.1 wheels)"
-       # --extra-index-url, NOT --index-url. --index-url REPLACES PyPI, so pip
-       # then looks for every transitive dependency (numpy and its build deps
-       # like meson-python) on download.pytorch.org, which only hosts torch
-       # wheels — the install dies on "No matching distribution for
-       # meson-python". --extra-index-url adds the torch index alongside PyPI.
-       pip install --quiet torch torchvision \
-         --extra-index-url https://download.pytorch.org/whl/cu121; }
+
+# Torch: pin an explicit cu121 build. Unpinned `torch` from this index resolved
+# to a newer wheel that dlopens libcusparseLt.so.0, which this box lacks
+# (ImportError on `from torch._C import *`). 2.4.x cu121 does not require it.
+# --extra-index-url (not --index-url): --index-url REPLACES PyPI, sending pip to
+# download.pytorch.org for numpy's build deps too, where they do not exist.
+if python -c "import torch; assert torch.version.cuda" 2>/dev/null; then
+  say "torch with CUDA already present ($(python -c 'import torch;print(torch.__version__)'))"
+else
+  say "installing torch 2.4.1 (cu121)"
+  $PIP torch==2.4.1 torchvision==0.19.1 \
+    --extra-index-url https://download.pytorch.org/whl/cu121
+fi
 # requirements.txt says numpy>=1.24, which would let pip pull 2.x over conda's
 # build and re-trigger the source compile. Keep whatever conda installed.
 # (The code itself is numpy-2 clean — this pin is a platform workaround for the
 # old glibc/GCC on this cluster, not a code constraint.)
-pip install --quiet -r requirements.txt "numpy<2"
+$PIP -r requirements.txt "numpy<2"
 python -c "import numpy; print('numpy', numpy.__version__)"
+# Prove torch actually LOADS (its C extension), not just that it imports a name.
+python -c "import torch; print('torch', torch.__version__, '| built for CUDA', torch.version.cuda)"
 python -c "import transformers, timm; print('transformers', transformers.__version__, '| timm', timm.__version__)"
 # NOTE: torch.cuda.is_available() is False here and that is fine — no GPU on the
 # login node. The job script re-checks it on the compute node, where it matters.
