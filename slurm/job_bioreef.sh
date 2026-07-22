@@ -76,15 +76,24 @@ SRC_FRAMES="$WORKDIR/data/frames"
 LOCAL_BASE="${SLURM_TMPDIR:-${TMPDIR:-/tmp}}/bioreef_$SLURM_JOB_ID"
 LOCAL_FRAMES="$LOCAL_BASE/frames"
 IMG_DIR="$SRC_FRAMES"
-if mkdir -p "$LOCAL_FRAMES" 2>/dev/null; then
+# Report what we have to work with, and DON'T hide cp's error (an earlier run
+# swallowed it and we could not tell space-exhaustion from a permission fault).
+NEED_KB=$(du -sk "$SRC_FRAMES" 2>/dev/null | cut -f1)
+AVAIL_KB=$(df -Pk "$(dirname "$LOCAL_BASE")" 2>/dev/null | awk 'NR==2{print $4}')
+echo "[stage] source ${NEED_KB:-?} KB | scratch $(dirname "$LOCAL_BASE") avail ${AVAIL_KB:-?} KB"
+if [ -n "$NEED_KB" ] && [ -n "$AVAIL_KB" ] && [ "$AVAIL_KB" -lt "$NEED_KB" ]; then
+  echo "[stage] scratch too small for frames; using network path"
+elif mkdir -p "$LOCAL_FRAMES" 2>/dev/null; then
   echo "[stage] copying frames -> $LOCAL_FRAMES"
-  if cp -r "$SRC_FRAMES/." "$LOCAL_FRAMES/" 2>/dev/null; then
+  if cp -r "$SRC_FRAMES/." "$LOCAL_FRAMES/"; then     # stderr now visible in .err
     n=$(find "$LOCAL_FRAMES" -type f | wc -l)
     echo "[stage] staged $n files to node-local disk"
     IMG_DIR="$LOCAL_FRAMES"
   else
-    echo "[stage] copy failed; using network path $SRC_FRAMES"
+    echo "[stage] copy failed (see .err); using network path $SRC_FRAMES"
   fi
+else
+  echo "[stage] could not create $LOCAL_FRAMES; using network path"
 fi
 # Clean up the local copy on exit (scratch is usually auto-wiped, but be tidy).
 trap 'rm -rf "$LOCAL_BASE" 2>/dev/null || true' EXIT
