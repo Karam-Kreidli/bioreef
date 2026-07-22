@@ -45,7 +45,12 @@ nvidia-smi
 # non-zero does the same. Disable errexit for the whole activation, source
 # conda's profile script directly (the canonical non-interactive init), then
 # VERIFY and re-enable. Nothing here can abort without printing why.
-set +e
+#
+# BOTH -e and -u are disabled here: conda's own activate/deactivate hook scripts
+# reference unset variables (e.g. CONDA_MKL_INTERFACE_LAYER_BACKUP in the MKL
+# deactivate hook), which under `set -u` abort the job. Conda assumes nounset is
+# OFF, as it is in any normal shell. Re-enable both after activation.
+set +eu
 module load anaconda3 2>/dev/null || module load anaconda3/3.11 2>/dev/null
 # Prefer sourcing conda.sh over the shell hook — it works in a bare batch shell.
 for CSH in "$(conda info --base 2>/dev/null)/etc/profile.d/conda.sh" \
@@ -55,7 +60,7 @@ for CSH in "$(conda info --base 2>/dev/null)/etc/profile.d/conda.sh" \
 done
 conda activate "$ENVNAME" || source activate "$ENVNAME"
 ACT_RC=$?
-set -e
+set -eu
 if [ "$(basename "${CONDA_PREFIX:-none}")" != "$ENVNAME" ]; then
   echo "FATAL: could not activate conda env '$ENVNAME' (rc=$ACT_RC, CONDA_PREFIX=${CONDA_PREFIX:-unset})." >&2
   echo "  conda base : $(conda info --base 2>&1)" >&2

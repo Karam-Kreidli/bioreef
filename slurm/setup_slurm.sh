@@ -85,12 +85,19 @@ else
     && say "ensured conda-built numpy in '$ENVNAME'" \
     || say "note: could not conda-install numpy (may already be present)"
 fi
-# `conda activate` needs the shell hook; `source activate` is the older form the
-# cluster docs use. Use the hook when we can, fall back to what they documented.
-eval "$(conda shell.bash hook)" 2>/dev/null || true
-conda activate "$ENVNAME" 2>/dev/null || source activate "$ENVNAME"
+# Activate with -e AND -u off: conda's own hook scripts reference unset vars
+# (e.g. CONDA_MKL_INTERFACE_LAYER_BACKUP), which under `set -u` abort the script.
+# Source conda.sh directly rather than the shell hook (works in a bare shell).
+set +eu
+for CSH in "$(conda info --base 2>/dev/null)/etc/profile.d/conda.sh" \
+           "$HOME/.conda/etc/profile.d/conda.sh" \
+           "/opt/conda/etc/profile.d/conda.sh"; do
+  [ -f "$CSH" ] && { . "$CSH"; break; }
+done
+conda activate "$ENVNAME" || source activate "$ENVNAME"
+set -eu
 python --version
-[ "$(basename "$CONDA_PREFIX")" = "$ENVNAME" ] || die "env did not activate (CONDA_PREFIX=$CONDA_PREFIX)"
+[ "$(basename "${CONDA_PREFIX:-none}")" = "$ENVNAME" ] || die "env did not activate (CONDA_PREFIX=${CONDA_PREFIX:-unset})"
 
 # Ignore the user site-packages (~/.local). This box has a stale ~/.local from
 # another project (ultralytics, an older torch) that pip and python both pick up
