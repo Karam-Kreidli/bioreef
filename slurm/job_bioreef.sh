@@ -65,11 +65,38 @@ python -c "import torch; assert torch.cuda.is_available(), 'no CUDA on compute n
 print('GPU:', torch.cuda.get_device_name(0), \
 round(torch.cuda.get_device_properties(0).total_memory/1e9,1), 'GB')"
 
+# --- stage frames to node-local disk -------------------------------------
+# $HOME/data/frames is on a NETWORK filesystem (df shows 127.0.0.1:/, an
+# exabyte-scale distributed FS). Training reads ~49k small PNGs every epoch;
+# over NFS the cold first pass alone took >12 min. Copy them ONCE to the
+# compute node's local scratch and read from there — later epochs then hit
+# local disk, not the network. If no local scratch exists or the copy fails,
+# fall back to the network path so the job still runs.
+SRC_FRAMES="$WORKDIR/data/frames"
+LOCAL_BASE="${SLURM_TMPDIR:-${TMPDIR:-/tmp}}/bioreef_$SLURM_JOB_ID"
+LOCAL_FRAMES="$LOCAL_BASE/frames"
+IMG_DIR="$SRC_FRAMES"
+if mkdir -p "$LOCAL_FRAMES" 2>/dev/null; then
+  echo "[stage] copying frames -> $LOCAL_FRAMES"
+  if cp -r "$SRC_FRAMES/." "$LOCAL_FRAMES/" 2>/dev/null; then
+    n=$(find "$LOCAL_FRAMES" -type f | wc -l)
+    echo "[stage] staged $n files to node-local disk"
+    IMG_DIR="$LOCAL_FRAMES"
+  else
+    echo "[stage] copy failed; using network path $SRC_FRAMES"
+  fi
+fi
+# Clean up the local copy on exit (scratch is usually auto-wiped, but be tidy).
+trap 'rm -rf "$LOCAL_BASE" 2>/dev/null || true' EXIT
+
 # --num_workers matches the CPUs we actually reserved. Asking for more workers
 # than allocated CPUs makes them contend and run SLOWER, not faster.
+# --img_dir points at the staged copy; benchmark.yaml is left untouched so the
+# benchmark DEFINITION does not change, only where the pixels are read from.
 srun python scripts/run.py "$RUN_ID" \
   --seed "$SEED" \
   --gpu 0 \
+  --img_dir "$IMG_DIR" \
   --num_workers "$SLURM_CPUS_PER_TASK" \
   --save_checkpoint
 
