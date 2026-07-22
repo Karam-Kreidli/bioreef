@@ -14,7 +14,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import pandas as pd
 from bioreef.config import BenchmarkConfig, DEFAULT_CONFIG_PATH
-from bioreef.data.split import binomial, canonical_genus
+from bioreef.data.split import binomial, canonical_genus, canonical_family
 
 
 def main():
@@ -26,13 +26,17 @@ def main():
     seen, conflicts = {}, {}
     for _, r in df.iterrows():
         name = binomial(r["genus"], r["species"])
-        tax = (canonical_genus(r["genus"]), str(r["family"]).strip())
+        # Apply the SAME canonicalization the taxonomy tree uses, so a conflict
+        # already resolved by _GENUS_CANON / _FAMILY_CANON is not re-flagged.
+        # Only conflicts that SURVIVE correction are real and need a new entry.
+        tax = (canonical_genus(r["genus"]), canonical_family(name, r["family"]))
         if name in seen and seen[name] != tax:
             conflicts.setdefault(name, {seen[name]}).add(tax)
         seen[name] = tax
 
     if not conflicts:
-        print("no taxonomy conflicts — all species have a single (genus, family).")
+        print("no taxonomy conflicts — all species have a single (genus, family) "
+              "after canonicalization.")
         return 0
 
     print(f"{len(conflicts)} conflicting species:")
