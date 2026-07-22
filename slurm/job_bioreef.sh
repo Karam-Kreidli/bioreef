@@ -38,19 +38,29 @@ echo "=== $(date) | job $SLURM_JOB_ID | $RUN_ID seed $SEED ==="
 hostname
 nvidia-smi
 
-module load anaconda3 2>/dev/null || module load anaconda3/3.11 2>/dev/null || true
-eval "$(conda shell.bash hook)" 2>/dev/null || true
-# Activation is allowed to "fail" (non-zero) without aborting the whole job:
-# under `set -e` a failing `conda activate` on a compute node kills the script
-# silently, right after nvidia-smi, with an empty .err — exactly the symptom we
-# hit. Try both forms, then VERIFY we actually landed in the env and say so.
+# --- activate conda WITHOUT letting set -e kill us silently ---------------
+# The previous version died right after nvidia-smi with empty .err: under
+# `set -e`, a failing `$(conda shell.bash hook)` command-substitution aborts the
+# script before the `|| true` is even applied, and `conda activate` returning
+# non-zero does the same. Disable errexit for the whole activation, source
+# conda's profile script directly (the canonical non-interactive init), then
+# VERIFY and re-enable. Nothing here can abort without printing why.
 set +e
-conda activate "$ENVNAME" 2>/dev/null || source activate "$ENVNAME" 2>/dev/null
+module load anaconda3 2>/dev/null || module load anaconda3/3.11 2>/dev/null
+# Prefer sourcing conda.sh over the shell hook — it works in a bare batch shell.
+for CSH in "$(conda info --base 2>/dev/null)/etc/profile.d/conda.sh" \
+           "$HOME/.conda/etc/profile.d/conda.sh" \
+           "/opt/conda/etc/profile.d/conda.sh"; do
+  [ -f "$CSH" ] && { . "$CSH"; break; }
+done
+conda activate "$ENVNAME" || source activate "$ENVNAME"
+ACT_RC=$?
 set -e
 if [ "$(basename "${CONDA_PREFIX:-none}")" != "$ENVNAME" ]; then
-  echo "FATAL: could not activate conda env '$ENVNAME' (CONDA_PREFIX=${CONDA_PREFIX:-unset})." >&2
-  echo "  conda on PATH: $(command -v conda || echo no)" >&2
-  echo "  envs: $(conda env list 2>&1 | tr '\n' ';')" >&2
+  echo "FATAL: could not activate conda env '$ENVNAME' (rc=$ACT_RC, CONDA_PREFIX=${CONDA_PREFIX:-unset})." >&2
+  echo "  conda base : $(conda info --base 2>&1)" >&2
+  echo "  conda.sh   : ${CSH:-none tried}" >&2
+  echo "  envs       : $(conda env list 2>&1 | tr '\n' ';')" >&2
   exit 1
 fi
 echo "[env] active: $CONDA_PREFIX | python $(python --version 2>&1)"
