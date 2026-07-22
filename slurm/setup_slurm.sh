@@ -147,10 +147,17 @@ fi
 # (The code itself is numpy-2 clean — this pin is a platform workaround for the
 # old glibc/GCC on this cluster, not a code constraint.)
 $PIP -r requirements.txt "numpy<2"
+# If an earlier run installed transformers 4.57+, `-r` may keep it (already
+# satisfies >=4.56). Force it back into the <4.57 window: 4.57 imports
+# torch.distributed.tensor.DTensor, absent in the torch 2.4 pinned for this box.
+$PIP --force-reinstall --no-deps "transformers>=4.56.0,<4.57"
 python -c "import numpy; print('numpy', numpy.__version__)"
 # Prove torch actually LOADS (its C extension), not just that it imports a name.
 python -c "import torch; print('torch', torch.__version__, '| built for CUDA', torch.version.cuda)"
 python -c "import transformers, timm; print('transformers', transformers.__version__, '| timm', timm.__version__)"
+# Prove DINOv3 modeling code actually IMPORTS against this torch — this is the
+# exact path that failed on a DTensor import, so surface it here, not mid-run.
+python -c "from transformers.models.dinov3_vit import modeling_dinov3_vit; print('dinov3 modeling imports OK')"
 # NOTE: torch.cuda.is_available() is False here and that is fine — no GPU on the
 # login node. The job script re-checks it on the compute node, where it matters.
 
