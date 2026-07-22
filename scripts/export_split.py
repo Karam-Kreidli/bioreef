@@ -1,12 +1,15 @@
 """
 Export the leakage-safe split as a released artifact (paper Section 3.6).
 
-Writes splits/ozfish_split_seed<N>.csv with one row per crop:
-    file_name, deployment, split, family, genus, species
+Writes splits/ozfish_split_seed<N>.csv with one row per ANNOTATION:
+    annotation_id, file_name, deployment, split, x0, y0, x1, y1,
+    family, genus, species
 
-This is the benchmark's reproducibility contribution — it pins the exact set of
-crops in each fold, independent of which machine the frames live on. Runs against
-the metadata CSV only (no images needed).
+annotation_id (= file_name + bbox) uniquely identifies each crop: one frame can
+hold several fish of the same species, so file_name alone is not unique — the
+bbox is what distinguishes them. This is the benchmark's reproducibility
+contribution — it pins the exact set of crops in each fold, independent of which
+machine the frames live on. Runs against the metadata CSV only (no images).
 
     python scripts/export_split.py --csv frame_metadata.csv --split_seed 0
 """
