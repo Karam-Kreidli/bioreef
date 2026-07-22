@@ -82,14 +82,16 @@ class ViTBackbone(nn.Module):
         return cls_token, patch_tokens
 
     # Where the transformer-block ModuleList lives, per HF backbone layout:
-    #   DINOv3: vit.model.layer     (encoder submodule is named `model`)
-    #   DINOv2: vit.encoder.layer
-    #   timm-style ViT: vit.blocks
-    # Order matters: DINOv3 also has a `.blocks`-free layout, so probe the most
-    # specific paths first. If none match we MUST fail — silently unfreezing the
-    # whole network turns a last-N-block ablation into a full fine-tune (a
-    # different experiment), which is exactly the bug this replaces.
-    _BLOCK_PATHS = (("model", "layer"), ("encoder", "layer"), ("blocks",))
+    #   DINOv3 (transformers 4.56): vit.layer   (blocks are a bare `.layer`
+    #                               ModuleList directly on the model root)
+    #   DINOv3 (other layouts):     vit.model.layer
+    #   DINOv2:                     vit.encoder.layer
+    #   timm-style ViT:             vit.blocks
+    # Order matters: probe the most specific paths first. If none match we MUST
+    # fail — silently unfreezing the whole network turns a last-N-block ablation
+    # into a full fine-tune (a different experiment), the bug this replaces.
+    _BLOCK_PATHS = (("model", "layer"), ("encoder", "layer"),
+                    ("layer",), ("blocks",))
 
     def _find_blocks(self):
         for path in self._BLOCK_PATHS:
