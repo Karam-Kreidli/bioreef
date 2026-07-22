@@ -98,11 +98,16 @@ fi
 # Clean up the local copy on exit (scratch is usually auto-wiped, but be tidy).
 trap 'rm -rf "$LOCAL_BASE" 2>/dev/null || true' EXIT
 
+# Plain `python`, NOT `srun python`. This is a single-node, single-task job, so
+# it runs directly under the sbatch allocation. Wrapping it in srun launches a
+# job STEP, which on this cluster failed with "Task launch ... Unspecified
+# error" before Python even started. srun buys nothing for a 1-task job.
+#
 # --num_workers matches the CPUs we actually reserved. Asking for more workers
 # than allocated CPUs makes them contend and run SLOWER, not faster.
 # --img_dir points at the staged copy; benchmark.yaml is left untouched so the
 # benchmark DEFINITION does not change, only where the pixels are read from.
-srun python scripts/run.py "$RUN_ID" \
+python scripts/run.py "$RUN_ID" \
   --seed "$SEED" \
   --gpu 0 \
   --img_dir "$IMG_DIR" \
