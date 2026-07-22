@@ -116,8 +116,12 @@ class HSLMLoss(nn.Module):
         w = self.cb_weights[targets]
         species_loss = (w * (1.0 - pt) ** self.gamma * ce).mean()
 
-        # Marginalize species probabilities up the taxonomy.
-        p_species = F.softmax(logits, dim=1)
+        # Marginalize species probabilities up the taxonomy. Force float32: this
+        # runs inside AMP, and in fp16 a small species prob can underflow to 0,
+        # then log() -> -inf and the genus/family loss explodes. eps=1e-8 is also
+        # below fp16's smallest normal (~6e-5), so the clamp wouldn't even save
+        # it. In float32 both the softmax and the log are safe.
+        p_species = F.softmax(logits.float(), dim=1)
         p_genus = self._marginalize(p_species, self.species_to_genus, self.num_genera)
         p_family = self._marginalize(p_species, self.species_to_family, self.num_families)
 

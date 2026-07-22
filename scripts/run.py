@@ -41,6 +41,20 @@ DEFAULT_CAMPAIGN_PATH = os.path.join(
 )
 
 
+def _git_revision() -> str:
+    """Short git commit the run was produced at, or 'unknown'. Recorded in each
+    metrics.json so a result kept across a code change is at least traceable."""
+    import subprocess
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            stderr=subprocess.DEVNULL,
+        ).decode().strip()
+    except Exception:
+        return "unknown"
+
+
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -96,19 +110,34 @@ class ResultWriter:
 
     def _yaml(self, obj_dict, name):
         import yaml
-        with open(os.path.join(self.dir, name), "w", encoding="utf-8") as f:
-            yaml.safe_dump(obj_dict, f, sort_keys=False)
+        self._atomic(os.path.join(self.dir, name),
+                     lambda f: yaml.safe_dump(obj_dict, f, sort_keys=False))
+
+    @staticmethod
+    def _atomic(path, write_fn):
+        """Write to <path>.tmp then rename onto <path>. rename is atomic on POSIX,
+        so a reader/skip-check never sees a half-written file."""
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            write_fn(f)
+        os.replace(tmp, path)
 
     def save(self, result, run_cfg, bench, model=None, idx_to_sp=None):
         os.makedirs(self.dir, exist_ok=True)
-        with open(self.metrics_path, "w", encoding="utf-8") as f:
-            json.dump(result, f, indent=2)
+        # Provenance + checkpoint FIRST, metrics.json LAST. already_done() keys
+        # on metrics.json, so writing it last makes its existence mean "the whole
+        # result directory is complete" — a crash mid-save leaves no metrics.json
+        # and the run re-executes instead of being skipped half-written.
         self._yaml(run_cfg.to_serializable_dict(), "run_config.yaml")
         self._yaml(bench.__dict__, "benchmark_config.yaml")
         if model is not None:
             torch.save({"model": model.state_dict(), "idx_to_sp": idx_to_sp,
                         "run_config": run_cfg.__dict__, "benchmark_config": bench.__dict__},
                        os.path.join(self.dir, "checkpoint.pt"))
+        # Stamp the code revision so a result carried over from before a code
+        # change is at least DETECTABLE (2.7). Cheap; does not gate skipping.
+        result = dict(result, code_revision=_git_revision())
+        self._atomic(self.metrics_path, lambda f: json.dump(result, f, indent=2))
 
 
 def execute_run(run_cfg, bench, seed, args, device):
