@@ -86,11 +86,33 @@ def main():
     UNKNOWN_NAME = "__unknown_prediction__"
     idx_to_sp[UNKNOWN_IDX] = UNKNOWN_NAME     # not in the tree -> max HD by construction
 
+    # --- REQUIRE exact one-to-one coverage before scoring anything ----------
+    # Skipping unknown IDs or tolerating missing predictions would drop those
+    # test items from the DENOMINATOR, silently inflating every C08 metric. A
+    # benchmark comparison must score MATANet on every test annotation, so a
+    # coverage gap is a hard error, not a warning.
+    pred_ids = sub[ann_col].astype(int)
+    if pred_ids.duplicated().any():
+        dups = sorted(pred_ids[pred_ids.duplicated()].unique())[:5]
+        raise SystemExit(f"[ingest] ABORT: duplicate prediction IDs (e.g. {dups}). "
+                         "MATANet must emit exactly one prediction per annotation.")
+    expected = set(true_by_annid)
+    received = set(pred_ids)
+    missing = expected - received
+    extra = received - expected
+    if missing or extra:
+        raise SystemExit(
+            f"[ingest] ABORT: prediction coverage mismatch — {len(missing)} test "
+            f"annotations have no prediction, {len(extra)} predictions reference "
+            f"unknown IDs. Scoring the matched subset would inflate C08 by "
+            f"dropping the missing items from the denominator.\n"
+            f"  missing (examples): {sorted(missing)[:5]}\n"
+            f"  extra   (examples): {sorted(extra)[:5]}"
+        )
+
     preds, targets, n_unknown_pred = [], [], 0
     for _, row in sub.iterrows():
         annid = int(row[ann_col])
-        if annid not in true_by_annid:
-            continue
         pred_name = str(row[pred_col])
         if pred_name not in name_to_idx:      # a predicted name outside our label set
             n_unknown_pred += 1
@@ -99,10 +121,6 @@ def main():
             pred_idx = name_to_idx[pred_name]
         preds.append(pred_idx)
         targets.append(true_by_annid[annid])
-
-    if len(targets) != len(test["annotations"]):
-        print(f"[ingest] warning: {len(targets)} predictions vs "
-              f"{len(test['annotations'])} test annotations (some missing)")
     if n_unknown_pred:
         frac = n_unknown_pred / max(1, len(preds))
         print(f"[ingest] warning: {n_unknown_pred} ({frac:.1%}) predicted names "

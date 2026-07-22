@@ -26,6 +26,7 @@ Design notes:
 """
 
 import argparse
+import hashlib
 import json
 import os
 import pickle
@@ -129,13 +130,37 @@ def image_id_of(img_path):
     return os.path.splitext(os.path.basename(img_path))[0]
 
 
+def _stable_ann_id(s):
+    """Deterministic integer id derived from the crop's identity (file_name +
+    bbox), NOT its position in the sample list. `enumerate(samples)` gave ids
+    that shift whenever the split/filtering/ordering changes, so an old
+    prediction file could silently score against a different fish. This id is
+    reproducible across exports of the same crop."""
+    fn = os.path.basename(s["img_path"])
+    x, y, w, h = (int(b) for b in s["bbox"])
+    key = f"{fn}|{x},{y},{w},{h}"
+    # 63-bit stable hash of the key (md5 is deterministic across runs/machines,
+    # unlike Python's salted hash()).
+    return int(hashlib.md5(key.encode()).hexdigest()[:15], 16)
+
+
 def coco_json(samples, categories):
     """Build a COCO-style dict from our split samples. category_id is 1-based
-    (their loader subtracts 1). bbox is [x, y, w, h] (our native format)."""
+    (their loader subtracts 1). bbox is [x, y, w, h] (our native format).
+    annotation `id` is a STABLE hash of file_name+bbox, so a prediction file
+    stays joinable even if the export is regenerated in a different order."""
     annotations = []
-    for i, s in enumerate(samples):
+    seen = {}
+    for s in samples:
+        aid = _stable_ann_id(s)
+        if aid in seen and seen[aid] != s["img_path"]:
+            raise SystemExit(
+                f"[export] annotation id collision: {aid} maps to both "
+                f"{seen[aid]} and {s['img_path']}. Two crops share file_name+bbox."
+            )
+        seen[aid] = s["img_path"]
         annotations.append({
-            "id": i,
+            "id": aid,
             "image_id": image_id_of(s["img_path"]),
             "image_path": os.path.abspath(s["img_path"]),  # patched loader reads this
             "category_id": s["class_idx"] + 1,              # 1-based
