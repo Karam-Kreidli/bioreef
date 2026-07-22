@@ -130,16 +130,22 @@ fi
 # this turns that into an immediate, readable "no wheel available" instead.
 export PIP_ONLY_BINARY=":all:"
 
-# Torch: pin an explicit cu121 build. Unpinned `torch` from this index resolved
-# to a newer wheel that dlopens libcusparseLt.so.0, which this box lacks
-# (ImportError on `from torch._C import *`). 2.4.x cu121 does not require it.
-# --extra-index-url (not --index-url): --index-url REPLACES PyPI, sending pip to
-# download.pytorch.org for numpy's build deps too, where they do not exist.
-if python -c "import torch; assert torch.version.cuda" 2>/dev/null; then
-  say "torch with CUDA already present ($(python -c 'import torch;print(torch.__version__)'))"
+# Torch: pin 2.5.1 (cu121). This is a two-sided constraint:
+#   * transformers 4.56.x (needed for DINOv3) imports
+#     torch.nn.attention.flex_attention, which does NOT exist before torch 2.5
+#     -> ModuleNotFoundError deep in transformers.masking_utils. So torch must
+#     be >= 2.5.
+#   * unpinned/newer torch resolves to a wheel that dlopens libcusparseLt.so.0,
+#     absent on this box -> ImportError on `from torch._C import *`. 2.5.1 cu121
+#     imports cleanly here (verified) and does not need it.
+# 2.5.1 is the version that satisfies both. --extra-index-url (not --index-url):
+# --index-url REPLACES PyPI, sending pip to pytorch.org for numpy's build deps.
+NEED_TORCH="2.5.1"
+if python -c "import torch,sys; sys.exit(0 if torch.__version__.startswith('$NEED_TORCH') else 1)" 2>/dev/null; then
+  say "torch $NEED_TORCH already present"
 else
-  say "installing torch 2.4.1 (cu121)"
-  $PIP torch==2.4.1 torchvision==0.19.1 \
+  say "installing torch $NEED_TORCH (cu121)"
+  $PIP torch==2.5.1 torchvision==0.20.1 \
     --extra-index-url https://download.pytorch.org/whl/cu121
 fi
 # requirements.txt says numpy>=1.24, which would let pip pull 2.x over conda's
@@ -147,10 +153,10 @@ fi
 # (The code itself is numpy-2 clean — this pin is a platform workaround for the
 # old glibc/GCC on this cluster, not a code constraint.)
 $PIP -r requirements.txt "numpy<2"
-# If an earlier run installed transformers 4.57+, `-r` may keep it (already
-# satisfies >=4.56). Force it back into the <4.57 window: 4.57 imports
-# torch.distributed.tensor.DTensor, absent in the torch 2.4 pinned for this box.
-$PIP --force-reinstall --no-deps "transformers>=4.56.0,<4.57"
+# transformers 4.56.2 is the verified-working version with torch 2.5.1: has
+# DINOv3, and its flex_attention / DTensor imports resolve against 2.5. Pin it
+# exactly so a re-run cannot drift to an untested release.
+$PIP --force-reinstall --no-deps "transformers==4.56.2"
 python -c "import numpy; print('numpy', numpy.__version__)"
 # Prove torch actually LOADS (its C extension), not just that it imports a name.
 python -c "import torch; print('torch', torch.__version__, '| built for CUDA', torch.version.cuda)"

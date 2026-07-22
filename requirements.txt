@@ -1,13 +1,13 @@
 # Core. Needs Python >=3.9 (transformers >=4.53 dropped 3.8).
-torch>=2.1
-torchvision>=0.16
-transformers>=4.56.0,<4.57  # Lower: released DINOv3 support starts at 4.56.0
-                          # (Meta's dinov3 repo); 4.53-4.55 raise "does not
-                          # recognize architecture dinov3_vit". Upper: 4.57+
-                          # imports torch.distributed.tensor.DTensor, which does
-                          # not exist in torch 2.4 (pinned for this box's old
-                          # glibc) -> ImportError. Weights are GATED: authenticate
-                          # + get access approved before loading.
+torch>=2.5,<2.6           # 2.5.x: has torch.nn.attention.flex_attention (needed
+                          # by transformers 4.56) AND imports cleanly on this
+                          # cluster (older/newer wheels dlopen libcusparseLt.so.0,
+                          # which the box lacks). Verified: 2.5.1+cu121.
+transformers>=4.56.0,<4.57  # DINOv3 support starts at 4.56.0 (4.53-4.55 raise
+                          # "does not recognize architecture dinov3_vit"). 4.56.x
+                          # needs torch>=2.5 (flex_attention). Weights are GATED:
+                          # authenticate + get access approved before loading.
+torchvision>=0.20,<0.21  # matches torch 2.5.x (0.20.1 pairs with torch 2.5.1)
 timm>=1.0                 # CNN/transformer baselines (C03/C05/C07)
 numpy>=1.24
 pandas>=2.0
