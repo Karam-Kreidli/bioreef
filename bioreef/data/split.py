@@ -49,11 +49,27 @@ _GENUS_CANON = {
     "Epinephalis": "Epinephelus",   # misspelling of Epinephelus
 }
 
+# Species -> correct family, for binomials whose metadata carries a WRONG family
+# on some rows. Keyed by binomial (not family alone: the wrong family may be
+# valid for other species). Applied in the taxonomy tree so every path agrees.
+# Extend as scripts/check_taxonomy_conflicts.py surfaces more.
+_FAMILY_CANON = {
+    # Epinephelus is a grouper genus (Serranidae); some rows mislabel it
+    # Percichthyidae (temperate perches).
+    "Epinephelus faveatus": "Serranidae",
+}
+
 
 def canonical_genus(genus) -> str:
     """Normalize a genus string (fix known source typos, strip whitespace)."""
     g = genus.strip() if isinstance(genus, str) else ""
     return _GENUS_CANON.get(g, g)
+
+
+def canonical_family(binomial_name, family) -> str:
+    """Correct a known-wrong family for a species; otherwise strip and return."""
+    f = family.strip() if isinstance(family, str) else ""
+    return _FAMILY_CANON.get(binomial_name, f)
 
 
 def binomial(genus, species) -> str:

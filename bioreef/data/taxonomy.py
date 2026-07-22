@@ -40,17 +40,18 @@ def get_taxonomy_tree(csv_path: str) -> dict:
     # the genus and family terms of the HSLM loss then become constants, training
     # runs to completion looking healthy, and the whole campaign is invalid. A
     # missing/corrupt taxonomy must stop the run, not degrade it silently.
-    from bioreef.data.split import canonical_genus
+    from bioreef.data.split import canonical_genus, canonical_family
     df = pd.read_csv(csv_path)
     tree = {}
     for _, row in df.dropna(subset=["species", "genus", "family"]).iterrows():
         name = binomial(row["genus"], row["species"])
-        # Canonicalize the stored parent with the SAME function that built the
+        # Canonicalize the stored parent with the SAME functions that built the
         # key. binomial() already canonicalizes the genus, so a raw parent here
         # (e.g. 'Epinephalis' vs the corrected 'Epinephelus') would create a
-        # phantom genus node and corrupt genus marginalization / HD.
+        # phantom genus node; canonical_family() fixes known-wrong families
+        # (e.g. Epinephelus faveatus mislabelled Percichthyidae).
         entry = {"genus": canonical_genus(row["genus"]),
-                 "family": str(row["family"]).strip(), "species": name}
+                 "family": canonical_family(name, row["family"]), "species": name}
         # A binomial mapping to two different genera/families means the metadata
         # is inconsistent; silently keeping the last row would hide that.
         if name in tree and tree[name] != entry:
