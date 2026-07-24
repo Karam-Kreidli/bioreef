@@ -1,0 +1,65 @@
+# A12 — full fine-tune at a COOLER backbone lr (1e-5 vs the panel's 1e-4).
+# (A11 with exactly lr changed. NOT a replacement for A11 — see below.)
+#
+# Why this run exists. The adaptation-depth sweep C09(0) -> A9(2) -> A10(4) ->
+# A11(12) holds every field but `unfreeze_blocks` fixed, INCLUDING lr 1e-4. That
+# is what makes it a clean one-variable curve, and it must stay that way. But
+# 1e-4 is hot for updating a whole backbone, and A11's own config note called
+# this out in advance ("if A11 trains unstably vs A10, a lower backbone lr is
+# the first thing to try").
+#
+# The A11 result then showed exactly the predicted signature (seed 0):
+#     A10 (unfreeze 4):  macro .6568  top1 .7992  HD .3823
+#     A11 (unfreeze 12): macro .6746  top1 .7854  HD .3670
+# A11 wins macro/HD/genus/family but LOSES top1 — consistent with a too-hot lr
+# perturbing fine species discrimination while coarse taxonomic structure still
+# improves. That is a HYPOTHESIS about lr, and A11 alone cannot test it, because
+# in A11 the lr and the block count are confounded with each other.
+#
+# A12 isolates it: A12 vs A11 differs ONLY in lr, so it answers "is A11's top1
+# deficit an lr artifact or a real property of full fine-tuning?"
+#   - if A12 recovers top1 AND keeps A11's HD/macro gain -> the deficit was lr,
+#     and full FT is not actually worse at species level.
+#   - if A12 still trails A10 on top1 -> the deficit is real, and the
+#     "full FT trades top-1 precision for taxonomic coherence" claim survives a
+#     genuine attempt to break it, which is much stronger than asserting it from
+#     a single lr.
+#
+# IMPORTANT: A11 is NOT superseded. A11 stays in the depth sweep at the panel lr
+# (that is what keeps the sweep one-variable); A12 is a separate lr probe hanging
+# off A11. Reporting A12's numbers in A11's row would silently make the
+# C09/A9/A10/A11 curve non-comparable.
+run_id: A12
+name: unfreeze_all_lr5
+priority: optional
+description: 'A11 with one change: lr 1e-4 -> 1e-5 (cooler lr for full-backbone fine-tuning).'
+model_family: dino
+backbone: dinov3
+context_levels: 3
+attention_depth: 1
+unfreeze_blocks: 12        # same as A11 (all 12 transformer blocks + final norm)
+hslm: true
+loss: cbfocal
+sampler: random
+family_weight: 3.0
+genus_weight: 2.0
+species_weight: 1.0
+epochs: 60
+warmup_epochs: 3
+batch_size: 32
+lr: 0.00001                # <- the only change vs A11 (1e-5, was 1e-4)
+seeds:
+- 0
+- 1
+- 2
+
+# NOTE: same memory profile as A11 (identical unfrozen-parameter count) — lr does
+# not affect the memory footprint, only the step size. On the 24 GB cluster card
+# A11 ran at batch 32 in ~14.2 GB, so A12 fits the same way; on the 8 GB
+# benchmark GPUs the same A11 caveats apply (headless card via --gpu, and record
+# any --batch_size departure).
+#
+# A cooler lr with the same 60-epoch budget converges further from init. If A12
+# looks UNDER-trained rather than more stable (train loss still falling steeply
+# at epoch 60), that is a budget artifact, not evidence about lr — say so rather
+# than reading it as "1e-5 is worse".
