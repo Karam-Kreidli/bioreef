@@ -61,6 +61,13 @@ export PYTHONNOUSERSITE=1
 export HF_HOME="${HF_HOME:-$HOME/.cache/huggingface}"
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
+# Fine-tuned DINOv2-large at batch 16 fills the 22 GB A10G almost exactly: the
+# first attempt died allocating 12 MiB with 1.3 GiB reserved-but-unallocated,
+# i.e. lost to fragmentation. expandable_segments reclaims that margin WITHOUT
+# touching batch size / LR / augmentation, so published-method parity is intact.
+# (If it still OOMs, the parity-preserving next step is batch_size 8 +
+# accumulate_grad_batches 2 in the config — effective batch stays 16.)
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 [ -f "$CONFIG" ] || { echo "FATAL: config not found: $CONFIG" >&2
   echo "  run export first: python matanet/export_ozfish.py --seed $SEED" >&2; exit 1; }
