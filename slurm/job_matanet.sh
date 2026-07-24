@@ -47,6 +47,14 @@ for CSH in "$(conda info --base 2>/dev/null)/etc/profile.d/conda.sh" \
            "/opt/conda/etc/profile.d/conda.sh"; do
   [ -f "$CSH" ] && { . "$CSH"; break; }
 done
+# sbatch inherits the SUBMITTING shell's environment by default. Submitting from
+# an active `bioreef` shell (the env the export step needs) leaked that
+# activation into the job: conda stacked matanet on top of bioreef and `python`
+# still resolved to bioreef, so matanet-only imports (omegaconf) vanished.
+# Unwind any inherited activation before activating ours.
+while [ -n "${CONDA_PREFIX:-}" ]; do
+  conda deactivate 2>/dev/null || break
+done
 conda activate "$ENVNAME" || source activate "$ENVNAME"
 set -eu
 if [ "$(basename "${CONDA_PREFIX:-none}")" != "$ENVNAME" ]; then
@@ -54,7 +62,16 @@ if [ "$(basename "${CONDA_PREFIX:-none}")" != "$ENVNAME" ]; then
   echo "  envs: $(conda env list 2>&1 | tr '\n' ';')" >&2
   exit 1
 fi
-echo "[env] active: $CONDA_PREFIX | python $(python --version 2>&1)"
+# CONDA_PREFIX can look right while PATH still points at another env's python
+# (the stacked-activation failure above). Check the INTERPRETER, not just the var.
+ACTUAL_PY="$(command -v python || true)"
+case "$ACTUAL_PY" in
+  "$CONDA_PREFIX"/bin/python*) : ;;
+  *) echo "FATAL: CONDA_PREFIX=$CONDA_PREFIX but python resolves to '$ACTUAL_PY'." >&2
+     echo "  A different env leaked in. Resubmit with: sbatch --export=NONE ..." >&2
+     exit 1 ;;
+esac
+echo "[env] active: $CONDA_PREFIX | python $(python --version 2>&1) | $ACTUAL_PY"
 export PYTHONNOUSERSITE=1
 # Their DINOv2-large was pre-fetched on the login node; force offline so a cache
 # miss fails fast instead of hanging on the (usually absent) compute-node net.
