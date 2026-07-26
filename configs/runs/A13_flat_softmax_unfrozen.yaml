@@ -1,0 +1,46 @@
+# A13 — hierarchy off on the UNFROZEN backbone: HSLM -> flat softmax (species-only).
+# (A12 reference with exactly `hslm` changed.)
+#
+# Why this run exists. The loss chain was originally cut off the FROZEN reference
+# C09 (unfreeze 0, lr 1e-4): C09 -> A6 -> A8. But on a frozen backbone the loss
+# terms barely separate — every frozen loss variant lands within ~1-2 pts because
+# the backbone is the bottleneck, not the loss (seed 0: C09 top1 .694, A6 .712,
+# A8 .730; the "proposed" loss did NOT dominate). The unfreeze sweep then showed
+# the real proposed model is unfrozen (A12: top1 .826, HD .320), so the loss
+# ablation belongs on THAT backbone, where the loss can actually shape the
+# representation.
+#
+# A13 re-cuts the middle of the chain on the unfrozen backbone. The new chain is
+#     A14 (flat plain CE) -> A13 (flat CB-Focal) -> A12 (HSLM + CB-Focal)
+# structurally identical to A8 -> A6 -> C09 but at unfreeze_blocks 12, lr 1e-5.
+#   - A13 vs A12 isolates the HIERARCHY (HSLM) on the strong backbone.
+#   - A14 vs A13 isolates CB-Focal on the strong backbone.
+# EVERY field except the loss terms is held at A12's values (unfreeze 12, lr 1e-5)
+# so the chain is a clean one-field-per-rung comparison and the lr/unfreeze that
+# make A12 strong do not confound the loss conclusion.
+run_id: A13
+name: flat_softmax_unfrozen
+priority: core
+description: 'A12 reference with one change: hierarchy off: HSLM -> flat softmax (species-only), on the unfrozen backbone.'
+model_family: dino
+backbone: dinov3
+context_levels: 3
+attention_depth: 1
+unfreeze_blocks: 12        # same as A12 (full fine-tune)
+hslm: false                # <- the only change vs A12 (hierarchy off)
+loss: cbfocal              # still CB-Focal (A13 vs A14 isolates this)
+sampler: random
+family_weight: 3.0
+genus_weight: 2.0
+species_weight: 1.0
+epochs: 60
+warmup_epochs: 3
+batch_size: 32
+lr: 0.00001                # same as A12 (1e-5), NOT the frozen panel's 1e-4
+seeds:
+- 0
+- 1
+- 2
+
+# NOTE: same memory/time profile as A12 (identical backbone, unfrozen). A12 ran at
+# ~14.2 GB batch 32 on the 24 GB cluster card, so A13 fits the same way.

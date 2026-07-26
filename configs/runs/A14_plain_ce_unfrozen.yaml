@@ -1,0 +1,41 @@
+# A14 — plain CE on the UNFROZEN backbone. The fully-stripped loss baseline.
+# (A13 with exactly `loss` changed; TWO fields differ from A12: hslm AND loss.)
+#
+# The unfrozen-backbone counterpart of A8. Relative to the proposed model A12 it
+# turns OFF both the hierarchy (hslm true->false) and CB-Focal (cbfocal->ce), so
+# it is NOT a one-variable ablation of A12. The valid single-factor reading is the
+# CHAIN, exactly as for the frozen A8 -> A6 -> C09:
+#     A12 -> A13   remove hierarchical genus/family supervision (hslm off)
+#     A13 -> A14   flat CB-Focal -> flat CE            <- this run
+# A13 and A14 are identical except for `loss`, so A13 vs A14 isolates CB-Focal on
+# the unfrozen backbone. Do NOT report A12 vs A14 as "the effect of cross-entropy"
+# (two factors differ). This is the endpoint that tells you what the full proposed
+# loss (A12) buys over vanilla CE once the backbone can actually respond to it.
+run_id: A14
+name: plain_ce_unfrozen
+priority: core
+description: >
+  Flat plain-CE endpoint of the UNFROZEN loss chain A12 -> A13 -> A14. Isolates
+  CB-Focal only when compared against A13, not against A12 (two factors differ
+  from A12: hslm and loss).
+model_family: dino
+backbone: dinov3
+context_levels: 3
+attention_depth: 1
+unfreeze_blocks: 12        # same as A12/A13 (full fine-tune)
+hslm: false                # off (like A13)
+loss: ce                   # <- the only change vs A13 (CB-Focal -> plain CE)
+sampler: random
+family_weight: 3.0
+genus_weight: 2.0
+species_weight: 1.0
+epochs: 60
+warmup_epochs: 3
+batch_size: 32
+lr: 0.00001                # same as A12/A13 (1e-5)
+seeds:
+- 0
+- 1
+- 2
+
+# NOTE: same memory/time profile as A12/A13 (identical unfrozen backbone).
