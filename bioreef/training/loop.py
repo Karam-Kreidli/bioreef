@@ -58,6 +58,10 @@ def build_loss(run_cfg, sp_counts, idx_to_sp, tree, device):
             sp_counts, s2g, s2f, n_gen, n_fam,
             family_weight=run_cfg.family_weight, genus_weight=run_cfg.genus_weight,
             species_weight=run_cfg.species_weight, device=device,
+            # HSLM's species term follows run_cfg.loss: 'cbfocal' (default) or
+            # plain 'ce' (ablation A15). Previously the loss field was ignored
+            # whenever hslm was on, so hslm+ce silently ran hslm+cbfocal.
+            species_loss_type=run_cfg.loss,
         )
     if run_cfg.loss == "cbfocal":
         return CBFocalLoss(sp_counts, device=device)

@@ -55,14 +55,32 @@ class HSLMLoss(nn.Module):
         gamma: float = 2.0,
         eps: float = 1e-8,
         device: str = "cuda",
+        species_loss_type: str = "cbfocal",
     ):
         super().__init__()
 
-        # CB-Focal class-balanced weights for the species term.
-        spc = np.asarray(samples_per_class, dtype=np.float64)
-        effective_num = 1.0 - np.power(beta, spc)
-        weights = (1.0 - beta) / np.maximum(effective_num, 1e-12)
-        weights = weights / np.sum(weights) * len(spc)
+        # Species term: CB-Focal (default) OR plain cross-entropy. The ablation
+        # A15 keeps the HSLM genus/family structure but swaps the species term to
+        # plain CE, to test whether the hierarchy's win survives without CB-Focal
+        # (the 3-seed unfrozen chain showed CB-Focal's tail gain is within noise
+        # while its top1/HD costs are real). Plain CE == CB-Focal with uniform
+        # class weights AND gamma 0: line `w * (1-pt)**gamma * ce` collapses to
+        # `ce.mean()`. Implemented that way so the two paths share one code line
+        # and cannot silently diverge.
+        if species_loss_type not in ("cbfocal", "ce"):
+            raise ValueError(f"species_loss_type must be 'cbfocal' or 'ce', got {species_loss_type!r}")
+        self.species_loss_type = species_loss_type
+
+        n_species = len(samples_per_class)
+        if species_loss_type == "ce":
+            weights = np.ones(n_species, dtype=np.float64)  # uniform -> plain CE
+            gamma = 0.0                                      # no focal modulation
+        else:
+            # CB-Focal class-balanced weights for the species term.
+            spc = np.asarray(samples_per_class, dtype=np.float64)
+            effective_num = 1.0 - np.power(beta, spc)
+            weights = (1.0 - beta) / np.maximum(effective_num, 1e-12)
+            weights = weights / np.sum(weights) * n_species
         self.register_buffer(
             "cb_weights", torch.tensor(weights, dtype=torch.float32, device=device)
         )
@@ -70,9 +88,9 @@ class HSLMLoss(nn.Module):
         # Taxonomy index maps (species idx -> genus / family idx).
         s2g = torch.as_tensor(species_to_genus, dtype=torch.long, device=device)
         s2f = torch.as_tensor(species_to_family, dtype=torch.long, device=device)
-        assert s2g.numel() == len(spc) == s2f.numel(), (
+        assert s2g.numel() == n_species == s2f.numel(), (
             "species_to_genus / species_to_family must have one entry per "
-            f"species ({len(spc)}); got {s2g.numel()} and {s2f.numel()}"
+            f"species ({n_species}); got {s2g.numel()} and {s2f.numel()}"
         )
         self.register_buffer("species_to_genus", s2g)
         self.register_buffer("species_to_family", s2f)
@@ -89,9 +107,9 @@ class HSLMLoss(nn.Module):
         self.last_components: Dict[str, float] = {}
 
         logger.info(
-            "HSLMLoss: %d species -> %d genera -> %d families | "
+            "HSLMLoss: %d species -> %d genera -> %d families | species_term=%s | "
             "weights species=%.1f genus=%.1f family=%.1f",
-            len(spc), self.num_genera, self.num_families,
+            n_species, self.num_genera, self.num_families, species_loss_type,
             species_weight, genus_weight, family_weight,
         )
 

@@ -1,0 +1,50 @@
+# A15 — HSLM hierarchy WITHOUT CB-Focal, on the unfrozen backbone.
+# (A12 reference with exactly `loss` changed: cbfocal -> ce.)
+#
+# Why this run exists. The 3-seed unfrozen loss chain A14 -> A13 -> A12 showed
+# CB-Focal does NOT earn its place on the strong backbone:
+#     A14 (plain CE)      tail 0.462+-0.042  top1 0.844+-0.005  HD 0.314
+#     A13 (+CB-Focal)     tail 0.479+-0.033  top1 0.828+-0.007  HD 0.344
+# adding CB-Focal moved the tail +1.7pt but that gain is well inside the +-0.03-0.04
+# noise, while the top1 (-1.6pt) and HD (+0.030) costs are OUTSIDE the noise. On a
+# frozen backbone CB-Focal gave +8pt tail (A8->A6); the unfrozen backbone already
+# learns the tail, so class-balancing mostly adds noise and costs headline metrics.
+#
+# That leaves a hole in the loss grid. We have:
+#     A14 = CE only            (no hierarchy, no CB-Focal)
+#     A13 = CB-Focal only      (no hierarchy)
+#     A12 = HSLM + CB-Focal    (the current proposed model)
+# but NOT HSLM + plain CE. A15 fills it. It isolates whether HSLM's win (A12's
+# best-in-table mistake-severity 1.820 and HD 0.313) survives WITHOUT CB-Focal:
+#   - A15 vs A14 isolates the HIERARCHY alone (both plain CE; A15 adds HSLM).
+#   - A15 vs A12 isolates CB-Focal on top of HSLM (both HSLM; A12 adds CB-Focal).
+# If A15 keeps A12's mistake-severity/HD advantage AND recovers A14's top1, then
+# HSLM + plain CE is a simpler, better proposed model and CB-Focal is dropped.
+run_id: A15
+name: hslm_ce_unfrozen
+priority: core
+description: 'A12 reference with one change: CB-Focal -> plain CE (HSLM hierarchy kept), on the unfrozen backbone.'
+model_family: dino
+backbone: dinov3
+context_levels: 3
+attention_depth: 1
+unfreeze_blocks: 12        # same as A12 (full fine-tune)
+hslm: true                 # hierarchy KEPT (unlike A13/A14)
+loss: ce                   # <- the only change vs A12 (CB-Focal -> plain CE)
+sampler: random
+family_weight: 3.0         # HSLM genus/family weights (unchanged)
+genus_weight: 2.0
+species_weight: 1.0
+epochs: 60
+warmup_epochs: 3
+batch_size: 32
+lr: 0.00001                # same as A12 (1e-5)
+seeds:
+- 0
+- 1
+- 2
+
+# NOTE: same memory/time profile as A12/A13/A14 (identical unfrozen backbone).
+# HSLM marginalizes over family/genus/species; with loss=ce the species term is
+# plain cross-entropy instead of CB-Focal. If the loader wires the species term
+# from `loss`, this is exactly "HSLM structure, CE species head".
