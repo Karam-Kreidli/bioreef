@@ -1,0 +1,48 @@
+# A16 — backbone DINOv3 -> DINOv2 on the unfrozen A15 recipe.
+# (A15 reference with exactly `backbone` changed.)
+#
+# Why this run exists. A1 already compares DINOv2 vs DINOv3 but only FROZEN
+# (A1 dinov2 frozen macro 0.536 vs frozen C09/dinov3 0.507). The proposed model
+# is UNFROZEN, so the frozen backbone comparison doesn't tell us which backbone
+# is better once it can actually adapt. A16 fills that: it is the A15 recipe
+# (HSLM + plain CE, full fine-tune, lr 1e-5) with the backbone swapped to
+# DINOv2-base, so A16 vs A15 isolates the backbone generation on the strong,
+# fine-tuned regime that the proposed model actually uses.
+#
+# Branched off A15 (not A12) deliberately: A15 (HSLM + plain CE) is the candidate
+# proposed model if the 3-seed loss chain confirms CB-Focal isn't earning its
+# place. Keeping A16 on the same loss as A15 means A16 vs A15 changes ONLY the
+# backbone.
+#
+# unfreeze_blocks=12 unfreezes all DINOv2 transformer blocks. DINOv2's blocks
+# live at vit.encoder.layer (a different module path than DINOv3's bare
+# vit.layer); backbone._BLOCK_PATHS already includes ('encoder','layer'), and the
+# unfreeze code RAISES rather than silently no-opping if it can't find them, so a
+# full-unfreeze here is guaranteed to actually unfreeze the backbone.
+run_id: A16
+name: dinov2_unfrozen
+priority: optional
+description: 'A15 reference with one change: backbone DINOv3 -> DINOv2-base, full fine-tune.'
+model_family: dino
+backbone: dinov2           # <- the only change vs A15 (was dinov3)
+context_levels: 3
+attention_depth: 1
+unfreeze_blocks: 12        # full fine-tune (same as A15)
+hslm: true                 # same as A15
+loss: ce                   # same as A15 (plain-CE species term)
+sampler: random
+family_weight: 3.0
+genus_weight: 2.0
+species_weight: 1.0
+epochs: 60
+warmup_epochs: 3
+batch_size: 32
+lr: 0.00001                # same as A15 (1e-5)
+seeds:
+- 0
+- 1
+- 2
+
+# NOTE: DINOv2-base and DINOv3-base are both ViT-B/16 (~86M backbone params), so
+# the memory/time profile matches A15 (~14 GB batch 32 on the 24 GB card). The
+# DINOv2-base weights were already pre-fetched on the login node for A1.
