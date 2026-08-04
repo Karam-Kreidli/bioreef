@@ -57,13 +57,20 @@ def parse_args():
                    help="gradient accumulation steps. batch_size * this must equal "
                         "16 (their published effective batch) or the run is no "
                         "longer a faithful official-repo baseline")
+    p.add_argument("--gradient_checkpointing", action="store_true",
+                   help="enable gradient checkpointing on MATANet's ~4 fine-tuned "
+                        "DINOv2-large encoders. NUMERICALLY IDENTICAL to the "
+                        "published run (recompute, not approximation); ~30%% slower. "
+                        "Use ONLY to fit the A10G (24GB) when A100 capacity is "
+                        "unavailable — MATANet's config OOMs the A10G even at fp16.")
     return p.parse_args()
 
 
 EFFECTIVE_BATCH = 16          # MATANet's published batch size
 
 
-def write_config(out_dir, nclass, node_cnt, seed, batch_size=16, accum=1):
+def write_config(out_dir, nclass, node_cnt, seed, batch_size=16, accum=1,
+                 gradient_checkpointing=False):
     """Write the OzFish MATANet config (their experiment-final14 adapted).
     3-level Family/Genus/Species hierarchy; DINOv2-large fine-tuned (as published);
     logging disabled (no wandb). Paths point at the exported files (absolute).
@@ -103,6 +110,7 @@ scheduler_gamma: 0.5
 lr: 0.000001
 weight_decay: 0.001
 accumulate_grad_batches: {accum}   # batch_size * accum == 16 (their effective batch)
+gradient_checkpointing: {str(gradient_checkpointing).lower()}   # recompute activations to fit 24GB; numerically identical
 phase: 'train'
 
 # model — DINOv2-large fine-tuned (MATANet as published; the paper's fairness caveat)
@@ -274,7 +282,8 @@ def main():
 
     # --- the MATANet config for OzFish (node_cnt is always correct this way) ---
     write_config(args.out_dir, num_classes, node_cnt, args.seed,
-                 batch_size=args.batch_size, accum=args.accumulate_grad_batches)
+                 batch_size=args.batch_size, accum=args.accumulate_grad_batches,
+                 gradient_checkpointing=args.gradient_checkpointing)
 
     print(f"[export] wrote MATANet inputs to {args.out_dir}/")
     print(f"  ranks={RANKS}  node_cnt={node_cnt}  (Family/Genus/Species)")
