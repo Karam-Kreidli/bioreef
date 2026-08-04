@@ -61,6 +61,15 @@ class RunConfig:
     batch_size: int = 32
     lr: float = 1e-4
 
+    # Early stopping (opt-in). patience = consecutive epochs with no val-HD
+    # improvement before stopping; None/0 -> disabled (train the full schedule,
+    # the default for every paper run so results are unchanged). Patience rides
+    # through temporary plateaus (the model routinely makes small late gains as
+    # the cosine LR anneals) and only ends a genuinely-converged run. min_delta
+    # is the smallest HD drop that counts as improvement.
+    patience: int = 0
+    early_stop_min_delta: float = 1e-4
+
     # Frozen-feature cache: for a frozen backbone with no context (C01/C02/A2/A9)
     # the ROI [CLS] never changes, so compute it once and train only the head on
     # cached vectors (minutes instead of hours). Ignored for any other run. The
@@ -154,6 +163,9 @@ class RunConfig:
         if self.warmup_epochs >= self.epochs:
             raise ValueError(f"{path}: warmup_epochs ({self.warmup_epochs}) "
                              f"must be < epochs ({self.epochs})")
+        if self.patience < 0:
+            raise ValueError(f"{path}: patience ({self.patience}) must be >= 0 "
+                             "(0 disables early stopping)")
         if min(self.family_weight, self.genus_weight, self.species_weight) < 0:
             raise ValueError(f"{path}: hierarchy weights must be >= 0")
 

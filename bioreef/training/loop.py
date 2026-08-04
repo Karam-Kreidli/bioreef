@@ -140,6 +140,17 @@ def train_and_evaluate(run_cfg, bench, seed, device, batch_size=32,
     ema = EMA(model, decay=0.999)
     best_hd, best_val, best_state = float("inf"), None, None
 
+    # Early stopping (opt-in via run_cfg.patience; None/0 disables -> full schedule).
+    # Stops only after `patience` consecutive epochs with no val-HD improvement, so
+    # a temporary plateau does NOT end the run — the model routinely makes small
+    # late gains as the cosine LR anneals, and those are ridden through. min_delta
+    # is the smallest HD drop that counts as real improvement (noise-level wobbles
+    # below it don't reset the counter). best_epoch is recorded so the log shows
+    # how far past the best we ran before stopping.
+    patience = getattr(run_cfg, "patience", None) or 0
+    min_delta = getattr(run_cfg, "early_stop_min_delta", 1e-4)
+    epochs_since_improve, best_epoch = 0, 0
+
     for epoch in range(1, epochs + 1):
         if sampler is not None:
             sampler.set_epoch(epoch)
@@ -163,10 +174,21 @@ def train_and_evaluate(run_cfg, bench, seed, device, batch_size=32,
         val = evaluate(model, val_dl, device, num_classes, idx_to_sp, tree, sp_counts)
         log(f"[val ep{epoch:02d}] macroAcc {val['macro_accuracy']:.4f} "
             f"HD {val['mean_hd']:.4f} top1 {val['top1_accuracy']:.4f}")
-        if val["mean_hd"] < best_hd:
-            best_hd, best_val = val["mean_hd"], val
+        # Improvement = val-HD dropped by more than min_delta below the best so far.
+        if val["mean_hd"] < best_hd - min_delta:
+            best_hd, best_val, best_epoch = val["mean_hd"], val, epoch
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            epochs_since_improve = 0
+        else:
+            epochs_since_improve += 1
         ema.restore(model, backup)
+
+        # Patience-based early stop: only after `patience` consecutive non-improving
+        # epochs. Rides through plateaus; ends a genuinely-converged run early.
+        if patience and epochs_since_improve >= patience:
+            log(f"[early-stop] no val-HD improvement for {patience} epochs "
+                f"(best HD {best_hd:.4f} at epoch {best_epoch}); stopping at epoch {epoch}/{epochs}.")
+            break
 
     # Load best (EMA) weights and score the held-out test set once.
     if best_state is not None:

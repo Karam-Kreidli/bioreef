@@ -40,6 +40,11 @@ epochs: 100                # <- longer training (was 60); cooler lr converges sl
 warmup_epochs: 3
 batch_size: 32
 lr: 0.00001                # A16 (1e-5)
+patience: 20               # early-stop after 20 epochs with no val-HD improvement.
+                           # Generous so a plateau-then-improve (common as cosine LR
+                           # anneals) is ridden through; saves GPU if it converges
+                           # well before epoch 100. Best-by-val-HD weights are kept
+                           # regardless of where it stops.
 seeds:
 - 1                        # seed 1 is the strongest single seed across the campaign
                            # (most HD wins, tied-most macro); see DEPLOYMENT_OPTIMIZATION.md
