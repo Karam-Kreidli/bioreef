@@ -1,0 +1,38 @@
+# D2 — DEPLOYMENT build with plain CE. NOT a paper run.
+#
+# The plain-CE counterpart of D1. Same deployment config (DINOv2 + unfreeze-all +
+# HSLM + attention_depth 4 + 100 epochs) but with the plain cross-entropy species
+# term instead of CB-Focal. This is "A16 + attention_depth 4 + 100 epochs".
+#
+# D2 vs D1 (identical except loss) isolates plain CE vs CB-Focal in the deployment
+# regime. On the campaign's unfrozen runs, plain CE (A14/A15/A16) won the headline
+# HD/top-1 while CB-Focal (A12/A13) had the better/steadier tail — D1 vs D2 tests
+# whether that trade still holds once attention is deeper and training is longer.
+#
+# For the Junior 35-species deployment, NOT the paper. Full plan + evidence in
+# DEPLOYMENT_OPTIMIZATION.md. EMA(0.999) is always on (bioreef/training/loop.py).
+run_id: D2
+name: deploy_ce
+priority: optional
+description: 'DEPLOYMENT: A16 (DINOv2, unfreeze-all, HSLM, plain CE) + attention_depth 4 + 100 epochs. Not a paper run.'
+model_family: dino
+backbone: dinov2
+context_levels: 3
+attention_depth: 4         # <- deeper MCEAM (was 1); untested on the strong backbone
+unfreeze_blocks: 12        # full fine-tune (A16)
+hslm: true                 # keep the hierarchy
+loss: ce                   # <- plain CE species term (the D1 vs D2 difference)
+sampler: random
+family_weight: 3.0
+genus_weight: 2.0
+species_weight: 1.0
+epochs: 100                # <- longer training (was 60); cooler lr converges slowly
+warmup_epochs: 3
+batch_size: 32
+lr: 0.00001                # A16 (1e-5)
+seeds:
+- 1                        # seed 1 is the strongest single seed across the campaign;
+                           # SAME seed as D1 so the D1-vs-D2 loss comparison is fair
+
+# NOTE: same memory/time profile as D1 (only the loss differs). depth 4 + 100
+# epochs is heavy; watch the val-HD curve for a plateau before epoch 100.

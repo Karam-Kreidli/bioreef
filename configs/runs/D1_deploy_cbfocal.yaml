@@ -1,0 +1,51 @@
+# D1 — DEPLOYMENT build with CB-Focal. NOT a paper run.
+#
+# This is the tail-oriented deployment candidate: take the strongest configuration
+# and push the two untested levers (deeper MCEAM attention, longer training) plus
+# CB-Focal for the long tail. For the Junior 35-species local deployment, NOT the
+# OzFish comparison paper (which reports the clean A/C campaign).
+#
+# Equivalent to "A12's loss recipe (HSLM + CB-Focal) on A16's backbone (DINOv2),
+# with attention_depth 1->4 and epochs 60->100". Differs from A16 in exactly:
+#     loss:            ce      -> cbfocal   (CB-Focal species term for the tail)
+#     attention_depth: 1       -> 4         (deeper MCEAM, UNTESTED on strong backbone)
+#     epochs:          60      -> 100       (cooler lr converges slowly; UNTESTED)
+#
+# D1 vs D2 (identical except loss) isolates CB-Focal vs plain CE in THIS regime.
+# Rationale, evidence, and the full deployment-optimization plan are in
+# DEPLOYMENT_OPTIMIZATION.md. EMA(0.999) is always on in the training loop
+# (bioreef/training/loop.py), so it needs no flag here.
+#
+# NOTE on "highest metrics": CB-Focal tends to LOWER HD/top-1 slightly while
+# RAISING the tail (on the unfrozen backbone A12's HD .313 vs A16's .280, but
+# A12's tail .497 vs A16's .453). D1 bets the tail gain + depth-4 + longer
+# training is worth it for deployment. If the headline HD/top-1 is all that
+# matters, D2 (plain CE) is the counterpart to beat.
+run_id: D1
+name: deploy_cbfocal
+priority: optional
+description: 'DEPLOYMENT: A16 (DINOv2, unfreeze-all, HSLM) + CB-Focal + attention_depth 4 + 100 epochs. Not a paper run.'
+model_family: dino
+backbone: dinov2
+context_levels: 3
+attention_depth: 4         # <- deeper MCEAM (was 1); untested on the strong backbone
+unfreeze_blocks: 12        # full fine-tune (A16)
+hslm: true                 # keep the hierarchy
+loss: cbfocal              # <- CB-Focal species term (the D1 vs D2 difference)
+sampler: random
+family_weight: 3.0
+genus_weight: 2.0
+species_weight: 1.0
+epochs: 100                # <- longer training (was 60); cooler lr converges slowly
+warmup_epochs: 3
+batch_size: 32
+lr: 0.00001                # A16 (1e-5)
+seeds:
+- 1                        # seed 1 is the strongest single seed across the campaign
+                           # (most HD wins, tied-most macro); see DEPLOYMENT_OPTIMIZATION.md
+
+# NOTE: attention_depth 4 stacks 4 cross-attention blocks per context stream, so
+# this is heavier than every A-run (all depth 1). Still DINOv2-base (~86M backbone)
+# + unfrozen, so it fits the 24GB card, but expect more memory + slower steps than
+# A16. 100 epochs at depth 4 is a long run — watch the val-HD curve for a plateau;
+# if it flattens well before epoch 100, the tail of the schedule is wasted.
