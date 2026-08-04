@@ -4,7 +4,7 @@ hardcoded FathomNet paths. Idempotent: safe to re-run.
 
     python matanet/patch_matanet.py --repo /path/to/fathomnet-cvpr2025-ssl
 
-Edits (surgical, path-only — the model/architecture is untouched):
+Edits (surgical — paths, plus one OPT-IN memory edit; architecture untouched):
   1. src/datautils.py  : load each image from anno['image_path'] (our export
                          stores the resolved absolute path) instead of the
                          hardcoded train_data/test_data dirs -> handles our
@@ -15,6 +15,13 @@ Edits (surgical, path-only — the model/architecture is untouched):
                          submission out <- config.submission_path,
                          drop the trailing debug lines that read a nonexistent
                          file (they crash the run).
+  4. src/model.py      : OPT-IN gradient checkpointing on the ~4 fine-tuned
+                         DINOv2-large encoders, gated on config.gradient_checkpointing
+                         (default absent -> off, so the published path is
+                         unchanged). Recompute, not approximation: numerically
+                         identical, ~30% slower, ~40% less activation memory.
+                         Only needed to fit the 24GB A10G (MATANet's config OOMs
+                         it even at fp16); a no-op when the flag is absent/false.
 
 Pinned to MATANet commit 922c2176893ef1d03de8b8701cd882b5764f9ae9 (MIT license).
 """
@@ -57,6 +64,33 @@ EDITS = {
             "print(f'wrote predictions -> {config.submission_path}')",
         ),
     ],
+    # OPT-IN gradient checkpointing, inserted right after the object encoder is
+    # built. Gated on config.gradient_checkpointing (getattr default False), so
+    # when the flag is absent the encoders behave exactly as published. Anchored
+    # to the object-encoder construction line, which is stable across the pinned
+    # commit.
+    "src/model.py": [
+        (
+            "        self.obj_vit_region_encoder  = AutoModel.from_pretrained(self.hparams.obj_vit_encoder_path)\n",
+            "        self.obj_vit_region_encoder  = AutoModel.from_pretrained(self.hparams.obj_vit_encoder_path)\n"
+            "\n"
+            "        # PATCHED (OzFish): opt-in gradient checkpointing on the ~4 fine-tuned\n"
+            "        # DINOv2-large encoders (one per context scale + the object encoder).\n"
+            "        # Recompute activations in the backward pass instead of storing them:\n"
+            "        # numerically identical to the published run, ~30% slower, ~40% less\n"
+            "        # activation memory. Off unless config.gradient_checkpointing is true,\n"
+            "        # so the default path is byte-for-byte the published one. Needed only\n"
+            "        # to fit the 24GB A10G (MATANet's config OOMs it even at fp16).\n"
+            "        if getattr(self.hparams, 'gradient_checkpointing', False):\n"
+            "            for _enc in list(self.img_vit_region_encoders.values()) + [self.obj_vit_region_encoder]:\n"
+            "                if hasattr(_enc, 'gradient_checkpointing_enable'):\n"
+            "                    try:\n"
+            "                        _enc.gradient_checkpointing_enable(\n"
+            "                            gradient_checkpointing_kwargs={'use_reentrant': False})\n"
+            "                    except TypeError:\n"
+            "                        _enc.gradient_checkpointing_enable()\n",
+        ),
+    ],
 }
 
 
@@ -65,7 +99,13 @@ def apply(path, edits):
         text = f.read()
     changed = 0
     for old, new in edits:
-        if new.split("\n")[0] in text and old not in text:
+        # Idempotency by the FULL replacement block, not its first line. An
+        # insert-after edit (new starts with old, then appends) leaves `old`
+        # present AND shares its first line with the original, so the old
+        # "first line in text and old not in text" test double-applied it
+        # (#model.py checkpointing edit). If the whole `new` is already there,
+        # this edit is done.
+        if new in text:
             continue  # already patched
         if old in text:
             text = text.replace(old, new, 1)
