@@ -18,7 +18,12 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:1
-#SBATCH --partition=dcv-1gpu-g5-ond
+# A100 40GB (p4d), not the 22GB A10G (g5): fine-tuned DINOv2-large at MATANet's
+# published batch 16 needs >22GB and OOMs on the A10G. The A100 fits the EXACT
+# published config (no AMP / checkpointing / batch-splitting), so C08 stays a
+# faithful official-repo baseline with zero deviations to caveat. Override with
+# `sbatch --partition=... job_matanet.sh` if the A100 partition is unavailable.
+#SBATCH --partition=dcv-p4d-ond
 #SBATCH --time=24:00:00
 #SBATCH --output=logs/%j.out
 #SBATCH --error=logs/%j.err
