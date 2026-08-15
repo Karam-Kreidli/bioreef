@@ -46,11 +46,12 @@ class Classifier(nn.Module):
     to output_dim, giving the 'context off' ablation a clean path.
     """
 
-    def __init__(self, cfg: ModelConfig, num_classes: int):
+    def __init__(self, cfg: ModelConfig, num_classes: int, attn_implementation: str = None):
         super().__init__()
         self.cfg = cfg
         self.backbone = ViTBackbone(
-            pretrained_model_name=BACKBONES[cfg.backbone], freeze=True
+            pretrained_model_name=BACKBONES[cfg.backbone], freeze=True,
+            attn_implementation=attn_implementation,
         )
         if cfg.unfreeze_blocks > 0:
             self.backbone.unfreeze_blocks(cfg.unfreeze_blocks)

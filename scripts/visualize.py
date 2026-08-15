@@ -153,7 +153,9 @@ def main():
     train_s, val_s, test_s = splits[0], splits[1], splits[2]
     samples = {"train": train_s, "val": val_s, "test": test_s}[args.split]
 
-    model = Classifier(mcfg, num_classes).to(device).eval()
+    # eager attention so backbone.attention_rollout can read the attention maps
+    # (SDPA/flash — the transformers default — return none). Visualization only.
+    model = Classifier(mcfg, num_classes, attn_implementation="eager").to(device).eval()
     model.load_state_dict(state)
     if mcfg.context_levels == 0:
         print("[warn] context_levels=0 (A2): no MCEAM — only backbone rollout will render.")

@@ -36,12 +36,19 @@ class ViTBackbone(nn.Module):
         self,
         pretrained_model_name: str = BACKBONES["dinov3"],
         freeze: bool = True,
+        attn_implementation: str = None,
     ):
         super().__init__()
         self.pretrained_model_name = pretrained_model_name
 
         logger.info(f"Loading ViT backbone: {pretrained_model_name}")
-        self.vit = AutoModel.from_pretrained(pretrained_model_name)
+        # attn_implementation="eager" is REQUIRED for attention_rollout: the SDPA
+        # / flash kernels (the transformers default) never materialize the
+        # attention matrix, so output_attentions=True silently returns nothing.
+        # Training/eval leave this None (fast default); only visualize.py asks for
+        # eager, and only for the frozen model it builds to render saliency.
+        kw = {} if attn_implementation is None else {"attn_implementation": attn_implementation}
+        self.vit = AutoModel.from_pretrained(pretrained_model_name, **kw)
 
         cfg = self.vit.config
         self.embed_dim = cfg.hidden_size                              # 768
