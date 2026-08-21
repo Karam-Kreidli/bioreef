@@ -52,8 +52,8 @@ tasks would launch twenty-four full training runs on one GPU and OOM instantly.
 
 **No DDP environment variables.** The sample exports `WORLD_SIZE`/`RANK`/
 `MASTER_ADDR`/`MASTER_PORT`. `run.py` is single-process; setting those can push
-torch into distributed init for a job with nothing to distribute. They're needed
-only for the multi-GPU `train.py` path.
+torch into distributed init for a job with nothing to distribute. The whole panel
+trains single-GPU — there is no multi-GPU path.
 
 **`--gres=gpu:1`, not `gpu:4`.** One GPU per job, many jobs. The scheduler
 backfills small jobs much sooner than a 4-GPU one, and a crash costs one cell of
