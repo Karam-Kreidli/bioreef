@@ -108,7 +108,14 @@ def hierarchical_metrics(
     level_weights: Optional[Dict[str, int]] = None,
 ) -> Dict[str, float]:
     """HD-based metrics: mean HD over all samples, mistake severity (mean HD over
-    ERRORS only), and per-level accuracy (genus-, family-correct cumulative)."""
+    ERRORS only), and per-level accuracy (genus-, family-correct cumulative).
+
+    Genus/family accuracy is derived from the taxonomy of the TOP-1 PREDICTED
+    SPECIES (predicted species -> its genus/family, compared to the true genus/
+    family), NOT from a marginalized parent-distribution argmax. This is uniform
+    across every model — flat baselines and HSLM alike — so the panel is comparable
+    (audit #83). It differs from how HSLM computes parent probabilities during
+    TRAINING (marginalization); do not conflate the two in the paper."""
     weights = level_weights or DEFAULT_LEVEL_WEIGHTS
     hd_scores = np.empty(len(targets), dtype=np.float64)
     levels = Counter()
@@ -128,7 +135,11 @@ def hierarchical_metrics(
     return {
         "mean_hd": float(hd_scores.mean()) if total else 0.0,
         "mistake_severity": float(hd_scores[errors].mean()) if n_err else 0.0,
-        "species_accuracy": species / total if total else 0.0,        # = micro acc
+        # species_accuracy is mathematically IDENTICAL to top1/micro accuracy (both
+        # = fraction with the exact species correct). Kept for the hierarchical
+        # panel's internal completeness, but do NOT report it as a separate metric
+        # from Top-1 in the paper (audit #84).
+        "species_accuracy": species / total if total else 0.0,        # == top1/micro acc
         "genus_accuracy": (species + genus) / total if total else 0.0,
         "family_accuracy": (species + genus + family) / total if total else 0.0,
         # "root" = wrong family within the tree; "unknown" = prediction outside
@@ -157,6 +168,27 @@ def evaluate_classification(
     """
     preds = np.asarray(preds)
     targets = np.asarray(targets)
+
+    # Validate shapes/bounds up front: a malformed prediction array (e.g. from an
+    # external model like MATANet) should raise a clear error here, not silently
+    # produce a plausible-looking wrong number downstream (audit #81).
+    if preds.shape != targets.shape:
+        raise ValueError(
+            f"preds shape {preds.shape} != targets shape {targets.shape}; "
+            f"there must be exactly one prediction per target.")
+    if preds.ndim != 1:
+        raise ValueError(f"preds/targets must be 1-D class-index arrays, got "
+                         f"{preds.ndim}-D {preds.shape}")
+    if targets.size and (targets.min() < 0 or targets.max() >= num_classes):
+        raise ValueError(
+            f"target class index out of range [0,{num_classes}): "
+            f"min {targets.min()}, max {targets.max()}")
+    if scores is not None:
+        scores = np.asarray(scores)
+        if scores.shape[0] != preds.shape[0]:
+            raise ValueError(f"scores rows {scores.shape[0]} != N {preds.shape[0]}")
+        if scores.ndim != 2 or scores.shape[1] != num_classes:
+            raise ValueError(f"scores must be (N,{num_classes}), got {scores.shape}")
 
     groups = freq_groups(samples_per_class)
     result: Dict[str, object] = {

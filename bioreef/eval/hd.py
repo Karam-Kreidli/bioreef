@@ -1,13 +1,20 @@
 """
-Hierarchical Distance (HD) — the tree-distance penalty between predicted and
-true taxa in the Linnaean hierarchy (Family -> Genus -> Species).
+Hierarchical Distance (HD) — an ordinal ERROR-SEVERITY score for a prediction,
+graded by how far the mistake is in the Linnaean hierarchy (Family/Genus/Species).
 
     Same species   -> 0      Same family    -> 2
     Same genus     -> 1      Different fam. -> 3
 
+NOTE: these are ORDINAL SEVERITY levels (0/1/2/3), not a literal count of tree
+edges (a true species->genus->family graph-hop distance would give different
+numbers). "Hierarchical distance" here means "how severe is the taxonomic error",
+defined exactly as the table above. This is deliberately distinct from MATANet's
+own training tree-distance matrix (0/2/4/6) — both models are SCORED by this same
+severity score at evaluation, but it is not the same objective they train on.
+
 This is the per-prediction penalty; eval.metrics aggregates it (mean HD, mistake
-severity, per-level accuracy). Define the exact rule once here so every metric
-and any MATANet cross-comparison uses the same distance matrix (paper 5.1/D).
+severity, per-level accuracy). Define the rule once here so every metric uses the
+same severity scale (paper 5.1/D).
 """
 
 import logging

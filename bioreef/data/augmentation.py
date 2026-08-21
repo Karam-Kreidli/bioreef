@@ -29,6 +29,10 @@ class MarineAugmentor:
         horizontal_flip_prob: float = 0.5,
         vertical_flip_prob: float = 0.0,     # off: fish are rarely upside-down
         rotation_limit: int = 30,            # SYMMETRIC: rotate in [-30, +30] deg
+        noise_prob: float = 1.0,             # P(apply additive Gaussian noise).
+                                             # 1.0 = every crop (the historical
+                                             # behaviour); lower to gate it like
+                                             # snow/blur.
         noise_var_limit: Tuple[float, float] = (5.0, 15.0),
         marine_snow_prob: float = 0.1,
         marine_snow_density: float = 0.005,
@@ -43,6 +47,7 @@ class MarineAugmentor:
         self.horizontal_flip_prob = horizontal_flip_prob
         self.vertical_flip_prob = vertical_flip_prob
         self.rotation_limit = rotation_limit
+        self.noise_prob = noise_prob
         self.noise_var_limit = noise_var_limit
         self.marine_snow_prob = marine_snow_prob
         self.marine_snow_density = marine_snow_density
@@ -66,7 +71,14 @@ class MarineAugmentor:
             image = cv2.warpAffine(image, M, (w, h), borderMode=cv2.BORDER_REFLECT)
         return image
 
-    def _apply_turbidity_noise(self, image):
+    def _apply_gaussian_noise(self, image):
+        """Additive Gaussian noise approximating turbidity-related sensor
+        degradation. NOTE: this is plain additive noise, NOT a physical turbidity
+        model (no wavelength-dependent attenuation/scattering). Gated by
+        noise_prob (default 1.0 = every crop, the historical behaviour; earlier
+        this had no gate at all, so it was silently P=1.0 while snow/blur were 0.1)."""
+        if np.random.random() > self.noise_prob:
+            return image
         var = np.random.uniform(*self.noise_var_limit)
         gaussian = np.random.normal(0, var ** 0.5, image.shape).astype(np.float32)
         noisy = image.astype(np.float32) + gaussian
@@ -138,7 +150,7 @@ class MarineAugmentor:
 
     def _apply_photometric_and_noise(self, image):
         """The fish-position-preserving ops (safe to apply per-stream)."""
-        image = self._apply_turbidity_noise(image)
+        image = self._apply_gaussian_noise(image)
         image = self._apply_marine_snow(image)
         image = self._apply_motion_blur(image)
         image = self._apply_photometric_jitter(image)

@@ -6,8 +6,9 @@ share the interface forward(streams)->logits and the same dataset. This is what
 keeps the preprocessing + eval path identical across the benchmark panel (the
 fairness rule) — there is no per-family eval code to drift.
 
-Single-GPU only (the frozen-backbone runs are light; timm baselines fit one GPU
-at batch 32). DDP training stays in scripts/train.py for the heavy multi-GPU jobs.
+Single-GPU: the frozen-backbone runs are light and the timm/unfrozen baselines
+fit one GPU at batch 32, so the whole panel trains on a single device — one code
+path, nothing to keep in sync.
 """
 
 import numpy as np
@@ -25,6 +26,7 @@ from bioreef.model import (
 )
 from bioreef.training import CBFocalLoss, BalancedDistributedSampler, EMA
 from bioreef.eval import evaluate_classification
+from bioreef import protocol
 
 
 def probe_cache_eligible(run_cfg):
@@ -58,13 +60,15 @@ def build_loss(run_cfg, sp_counts, idx_to_sp, tree, device):
             sp_counts, s2g, s2f, n_gen, n_fam,
             family_weight=run_cfg.family_weight, genus_weight=run_cfg.genus_weight,
             species_weight=run_cfg.species_weight, device=device,
+            beta=protocol.CBFOCAL_BETA, gamma=protocol.FOCAL_GAMMA,
             # HSLM's species term follows run_cfg.loss: 'cbfocal' (default) or
             # plain 'ce' (ablation A15). Previously the loss field was ignored
             # whenever hslm was on, so hslm+ce silently ran hslm+cbfocal.
             species_loss_type=run_cfg.loss,
         )
     if run_cfg.loss == "cbfocal":
-        return CBFocalLoss(sp_counts, device=device)
+        return CBFocalLoss(sp_counts, beta=protocol.CBFOCAL_BETA,
+                           gamma=protocol.FOCAL_GAMMA, device=device)
     return nn.CrossEntropyLoss()
 
 
@@ -126,7 +130,8 @@ def train_and_evaluate(run_cfg, bench, seed, device, batch_size=32,
 
     model = build_model(run_cfg, num_classes).to(device)
     criterion = build_loss(run_cfg, sp_counts, idx_to_sp, tree, device)
-    optimizer = optim.AdamW(trainable_parameters(model), lr=run_cfg.lr, weight_decay=0.01)
+    optimizer = optim.AdamW(trainable_parameters(model), lr=run_cfg.lr,
+                            weight_decay=protocol.WEIGHT_DECAY)
 
     epochs, warmup = run_cfg.epochs, run_cfg.warmup_epochs
     if warmup > 0:
@@ -137,7 +142,7 @@ def train_and_evaluate(run_cfg, bench, seed, device, batch_size=32,
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 
     scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
-    ema = EMA(model, decay=0.999)
+    ema = EMA(model, decay=protocol.EMA_DECAY)
     best_hd, best_val, best_state = float("inf"), None, None
 
     # Early stopping (opt-in via run_cfg.patience; None/0 disables -> full schedule).
@@ -164,6 +169,16 @@ def train_and_evaluate(run_cfg, bench, seed, device, batch_size=32,
             optimizer.zero_grad()
             with torch.amp.autocast("cuda", enabled=device.type == "cuda"):
                 loss = criterion(model(streams), labels)
+            # Non-finite loss (NaN/Inf) from an unstable full-FT run must HARD-FAIL,
+            # not silently continue: an un-guarded step corrupts the weights, the EMA
+            # and best_state, and every downstream metric becomes NaN while the run
+            # still "completes". Catch it at the source (matters for A11/A12/A15).
+            if not torch.isfinite(loss):
+                raise RuntimeError(
+                    f"non-finite loss ({loss.item()}) at epoch {epoch}, "
+                    f"{run_cfg.slug} seed {seed}. Training is diverging — lower the "
+                    f"lr or add grad clipping rather than saving a corrupt model."
+                )
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -174,6 +189,15 @@ def train_and_evaluate(run_cfg, bench, seed, device, batch_size=32,
         val = evaluate(model, val_dl, device, num_classes, idx_to_sp, tree, sp_counts)
         log(f"[val ep{epoch:02d}] macroAcc {val['macro_accuracy']:.4f} "
             f"HD {val['mean_hd']:.4f} top1 {val['top1_accuracy']:.4f}")
+        # Checkpoint selection uses validation Mean HD (lower = better), NOT the
+        # headline macro accuracy. This is a DELIBERATE protocol choice, uniform
+        # across every run for fairness: HD selects the model that makes the least
+        # taxonomically-severe mistakes, which is the paper's core argument (a
+        # monitoring deployment cares about error severity, not just raw accuracy).
+        # It must be stated + justified in the paper's protocol section (audit #40),
+        # since the primary REPORTED metric (macro accuracy) differs from the
+        # SELECTION metric. Changing this would re-select every checkpoint, so it is
+        # fixed for the whole panel.
         # Improvement = val-HD dropped by more than min_delta below the best so far.
         if val["mean_hd"] < best_hd - min_delta:
             best_hd, best_val, best_epoch = val["mean_hd"], val, epoch
@@ -190,9 +214,18 @@ def train_and_evaluate(run_cfg, bench, seed, device, batch_size=32,
                 f"(best HD {best_hd:.4f} at epoch {best_epoch}); stopping at epoch {epoch}/{epochs}.")
             break
 
-    # Load best (EMA) weights and score the held-out test set once.
-    if best_state is not None:
-        model.load_state_dict(best_state)
+    # Load best (EMA) weights and score the held-out test set once. best_state is
+    # None only if EVERY epoch's val-HD was non-finite (or none improved on inf) —
+    # i.e. checkpoint selection never happened. Testing the current (last-epoch)
+    # model in that case fabricates a result from a run whose model selection
+    # failed. Fail loudly instead of reporting an accidental number.
+    if best_state is None:
+        raise RuntimeError(
+            f"no best checkpoint was ever selected for {run_cfg.slug} seed {seed} "
+            f"(all {epochs} epochs had non-improving / non-finite val-HD). Model "
+            f"selection failed — do not trust a test number from the last-epoch model."
+        )
+    model.load_state_dict(best_state)
     test_metrics = evaluate(model, test_dl, device, num_classes, idx_to_sp, tree, sp_counts)
     return test_metrics, best_val, model, idx_to_sp, num_classes
 
@@ -250,7 +283,8 @@ def _train_probe_cached(run_cfg, bench, seed, device, num_classes, idx_to_sp,
     # from the panel ONLY in the intended ways (frozen probe, un-augmented).
     criterion = build_loss(run_cfg, sp_counts, idx_to_sp, tree, device)
     head_params = list(model.roi_only_proj.parameters()) + list(model.head.parameters())
-    optimizer = optim.AdamW(head_params, lr=run_cfg.lr, weight_decay=0.01)
+    optimizer = optim.AdamW(head_params, lr=run_cfg.lr,
+                            weight_decay=protocol.WEIGHT_DECAY)
     epochs, warmup = run_cfg.epochs, run_cfg.warmup_epochs
     if warmup > 0:
         warm = optim.lr_scheduler.LinearLR(optimizer, 1e-2, 1.0, warmup)
@@ -258,7 +292,7 @@ def _train_probe_cached(run_cfg, bench, seed, device, num_classes, idx_to_sp,
         scheduler = optim.lr_scheduler.SequentialLR(optimizer, [warm, cos], [warmup])
     else:
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
-    ema = EMA(model, decay=0.999)   # shadows only trainable (head) params
+    ema = EMA(model, decay=protocol.EMA_DECAY)   # shadows only trainable (head) params
 
     if run_cfg.sampler == "balanced":
         sampler = BalancedDistributedSampler(train_s, num_replicas=1, rank=0, seed=seed)
@@ -278,6 +312,11 @@ def _train_probe_cached(run_cfg, bench, seed, device, num_classes, idx_to_sp,
             optimizer.zero_grad()
             with torch.amp.autocast("cuda", enabled=device.type == "cuda"):
                 loss = criterion(_probe_head_forward(model, f), y)
+            if not torch.isfinite(loss):
+                raise RuntimeError(
+                    f"non-finite loss ({loss.item()}) at epoch {epoch}, "
+                    f"{run_cfg.slug} seed {seed} (probe path). Training is diverging."
+                )
             loss.backward()
             optimizer.step()
             ema.update(model)
@@ -294,8 +333,13 @@ def _train_probe_cached(run_cfg, bench, seed, device, num_classes, idx_to_sp,
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
         ema.restore(model, backup)
 
-    if best_state is not None:
-        model.load_state_dict(best_state)
+    if best_state is None:
+        raise RuntimeError(
+            f"no best checkpoint selected for {run_cfg.slug} seed {seed} (probe "
+            f"path): all {epochs} epochs had non-improving val-HD. Model selection "
+            f"failed — refusing to report a last-epoch number."
+        )
+    model.load_state_dict(best_state)
     test_metrics = _evaluate_features(model, te_f, te_y, device, num_classes,
                                       idx_to_sp, tree, sp_counts)
     return test_metrics, best_val, model, idx_to_sp, num_classes

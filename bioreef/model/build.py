@@ -24,7 +24,8 @@ class ModelConfig:
                                       # from (social, habitat, full_frame):
                                       # 0=none, 1=social only, 3=all three
     attention_depth: int = 1          # cross-attention blocks per stream
-    embed_dim: int = 768
+    embed_dim: int = None             # None -> read from the backbone (its real
+                                      # hidden size); set only to assert a value
     output_dim: int = 256
     num_heads: int = 8
     unfreeze_blocks: int = 0          # 0 = fully frozen backbone
@@ -56,9 +57,23 @@ class Classifier(nn.Module):
         if cfg.unfreeze_blocks > 0:
             self.backbone.unfreeze_blocks(cfg.unfreeze_blocks)
 
+        # Take the embedding width from the ACTUAL backbone, not the hardcoded
+        # ModelConfig.embed_dim (768). The two agree for DINOv2/v3-base, but a
+        # small/large backbone (e.g. DINOv2-large = 1024) would silently mismatch
+        # the MCEAM/head sizing against the real feature dim. If a config sets an
+        # explicit embed_dim that disagrees with the backbone, that is a config
+        # error — fail loudly rather than build a mis-sized head.
+        embed_dim = self.backbone.embed_dim
+        if cfg.embed_dim is not None and cfg.embed_dim != embed_dim:
+            raise ValueError(
+                f"ModelConfig.embed_dim={cfg.embed_dim} disagrees with the "
+                f"{cfg.backbone} backbone's actual hidden size {embed_dim}. Leave "
+                f"embed_dim as the default (it is read from the backbone) or set it "
+                f"to match.")
+
         if cfg.context_levels > 0:
             self.mceam = MCEAM(
-                embed_dim=cfg.embed_dim, num_heads=cfg.num_heads,
+                embed_dim=embed_dim, num_heads=cfg.num_heads,
                 output_dim=cfg.output_dim, num_context_levels=cfg.context_levels,
                 attention_depth=cfg.attention_depth, use_checkpointing=True,
             )
@@ -71,11 +86,11 @@ class Classifier(nn.Module):
                 # Strict linear probe (C01): the ONLY trainable transform of the
                 # frozen [CLS] is a single Linear. No LayerNorm, no nonlinearity.
                 self.roi_only_proj = nn.Identity()
-                head_in = cfg.embed_dim
+                head_in = embed_dim
             else:
                 self.roi_only_proj = nn.Sequential(
-                    nn.LayerNorm(cfg.embed_dim),
-                    nn.Linear(cfg.embed_dim, cfg.output_dim),
+                    nn.LayerNorm(embed_dim),
+                    nn.Linear(embed_dim, cfg.output_dim),
                     nn.GELU(),
                 )
                 head_in = cfg.output_dim

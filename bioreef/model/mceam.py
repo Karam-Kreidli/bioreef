@@ -2,11 +2,22 @@
 MCEAM — Multi-Context Environmental Attention Module.
 
 The ROI [CLS] token (the fish) cross-attends to the patch embeddings of each
-context stream (the environment), then a gated FFN fuses them into the
-context-aware embedding z. A lighter, single-block variant inspired by MATANet's
-multi-context attention, with the learned gate as the addition (paper 4.2).
+context stream (the environment). Each stream yields ONE attended vector; these
+are CONCATENATED with the ROI [CLS], projected by a fusion FFN, and blended with a
+projected ROI via a learned gate into the context-aware embedding z. Inspired by
+MATANet's multi-context attention, with the learned gate as the addition (paper 4.2).
 
-    F_attn = sum_j softmax((W_q.g).(W_k.P_j)^T / sqrt(d)) . (W_v.P_j)
+Per context stream j (attended vector, then combined by concat+FFN — NOT summed):
+    a_j = softmax((W_q·g)·(W_k·P_j)^T / sqrt(d)) · (W_v·P_j)
+    z_ctx = FFN( concat[ g, a_1, ..., a_C ] )
+    z     = gate·z_ctx + (1 - gate)·(W_roi·g)
+
+NOTE on attention_depth > 1: the CrossAttentionBlock is a cross-attention +
+output-projection layer with LayerNorm, but NO residual around attention and NO
+FFN sublayer — so it is not a standard Transformer block. Stacking depth>1 refines
+the query through each block in turn (the query after block 1 is the attended
+output, not the original ROI [CLS]); the original ROI query is not re-used
+independently at every layer.
 """
 
 import logging

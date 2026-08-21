@@ -30,8 +30,15 @@ class BalancedDistributedSampler(Sampler):
         self.num_classes = len(class_to_indices)
 
         if samples_per_class is None:
-            counts = [len(v) for v in class_to_indices.values()]
-            samples_per_class = int(np.median(counts))
+            # Draw ceil(N_train / num_classes) per class, so a balanced epoch sees
+            # ~N_train samples — the SAME per-epoch exposure (and optimizer-step
+            # count) as the random sampler. The old default median(count) gave a
+            # much shorter epoch (median×C ≪ N_train on a long tail), so the
+            # balanced-sampler ablation (A7) silently also cut the training budget
+            # to ~40% of the reference — confounding sampling with total exposure.
+            # Equal exposure makes A7 a clean one-factor (distribution-only) ablation.
+            n_total = sum(len(v) for v in class_to_indices.values())
+            samples_per_class = math.ceil(n_total / max(1, self.num_classes))
         self.samples_per_class = samples_per_class
 
         total = self.num_classes * self.samples_per_class
