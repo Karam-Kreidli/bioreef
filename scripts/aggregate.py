@@ -79,15 +79,50 @@ class RunGroup:
     metric_samples: Dict[str, List[float]] = field(default_factory=lambda: defaultdict(list))
     group_samples: Dict[str, List[float]] = field(default_factory=lambda: defaultdict(list))
 
+    # provenance fingerprints seen across this group's seeds (audit #10). Two seeds
+    # are only comparable if their code_revision + dataset hash + benchmark def match.
+    provenances: Dict[int, dict] = field(default_factory=dict)
+    code_revisions: Dict[int, str] = field(default_factory=dict)
+
     def add(self, record: dict) -> None:
         """Fold one seed's metrics.json record into this group."""
-        self.seeds.append(record.get("seed"))
+        seed = record.get("seed")
+        self.seeds.append(seed)
+        # Track provenance so mismatched seeds can be caught before averaging.
+        prov = record.get("provenance")
+        # compare the code/data/benchmark part, not the resolved run_config (seed
+        # legitimately differs there) — pull the comparable subset.
+        if prov is not None:
+            self.provenances[seed] = {
+                "code_revision": prov.get("code_revision"),
+                "dataset_sha256": prov.get("dataset_sha256"),
+                "benchmark": prov.get("benchmark"),
+            }
+        self.code_revisions[seed] = record.get("code_revision", "unknown")
         test = record.get("test", {})
         for key, _ in TABLE_METRICS:
             if key in test:
                 self.metric_samples[key].append(test[key])
         for grp, val in (test.get("group_accuracy") or {}).items():
             self.group_samples[grp].append(val)
+
+    def provenance_issue(self) -> Optional[str]:
+        """Return a description if this group's seeds are NOT safely comparable
+        (mismatched code/data/benchmark fingerprint, or missing provenance), else
+        None. Legacy results with no fingerprint are reported as 'unverifiable'."""
+        provs = self.provenances
+        if len(provs) < len(self.seeds):
+            missing = len(self.seeds) - len(provs)
+            revs = sorted(set(self.code_revisions.values()))
+            return (f"{missing}/{len(self.seeds)} seed(s) have no provenance "
+                    f"fingerprint (pre-provenance results); code_revisions seen: "
+                    f"{revs} — cannot verify the seeds are comparable")
+        distinct = {json.dumps(p, sort_keys=True) for p in provs.values()}
+        if len(distinct) > 1:
+            return (f"seeds have DIFFERENT provenance (code/data/benchmark) — "
+                    f"averaging them mixes non-comparable runs. "
+                    f"code_revisions: {sorted(set(self.code_revisions.values()))}")
+        return None
 
     def metric(self, key: str) -> Tuple[float, float]:
         return mean_std(self.metric_samples.get(key, []))
@@ -189,11 +224,37 @@ def render_summary(groups: Dict[str, RunGroup]) -> str:
 
 # --- orchestration -----------------------------------------------------------
 
+def _campaign_slugs(campaign_path: str) -> Optional[set]:
+    """Read the declared run ids from a campaign YAML and map to result slugs.
+    Returns a set of slugs to KEEP, or None if the file can't be read. This is how
+    the paper table excludes deployment/non-declared runs (D1/D2) and any post-hoc
+    config not in the campaign (audit #14)."""
+    import yaml
+    from bioreef.run_config import RunConfig
+    with open(campaign_path, encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    ids = data.get("runs") or data.get("run_ids") or []
+    slugs = set()
+    for rid in ids:
+        try:
+            slugs.add(RunConfig.find(rid).slug)
+        except Exception:
+            slugs.add(rid)   # fall back to the raw id if the config can't resolve
+    return slugs
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--results_dir", default="results")
     p.add_argument("--out_md", default="RESULTS.md")
+    p.add_argument("--campaign", default=None,
+                   help="campaign YAML: include ONLY its declared runs in the table "
+                        "(excludes D1/D2 + any config not in the campaign). Omit to "
+                        "aggregate every result found.")
+    p.add_argument("--strict-provenance", action="store_true",
+                   help="hard-fail (instead of warn) if any config's seeds have "
+                        "mismatched or missing provenance fingerprints")
     args = p.parse_args()
 
     groups = load_results(args.results_dir)
@@ -201,6 +262,29 @@ def main():
         print(f"no results under {args.results_dir}/ — run a config first "
               "(python scripts/run.py C09 --seed 0)")
         return
+
+    # --- campaign filter (audit #14) ---------------------------------------
+    if args.campaign:
+        keep = _campaign_slugs(args.campaign)
+        dropped = [s for s in groups if s not in keep]
+        groups = {s: g for s, g in groups.items() if s in keep}
+        if dropped:
+            print(f"[campaign] excluded {len(dropped)} non-declared config(s): "
+                  f"{sorted(dropped)}")
+
+    # --- provenance check (audit #10) --------------------------------------
+    issues = {slug: g.provenance_issue() for slug, g in groups.items()}
+    issues = {s: msg for s, msg in issues.items() if msg}
+    if issues:
+        print("\n[provenance] the following configs have comparability issues:")
+        for slug, msg in sorted(issues.items()):
+            print(f"  - {slug}: {msg}")
+        if args.strict_provenance:
+            raise SystemExit(
+                "\n[abort] --strict-provenance set and provenance issues exist. "
+                "Re-run the affected configs under one code revision, or drop the "
+                "unverifiable seeds, before building the paper table.")
+        print("  (warning only; pass --strict-provenance to make this fatal)\n")
 
     with open(args.out_md, "w", encoding="utf-8", newline="\n") as f:
         f.write(render_markdown(groups))

@@ -42,17 +42,65 @@ DEFAULT_CAMPAIGN_PATH = os.path.join(
 
 
 def _git_revision() -> str:
-    """Short git commit the run was produced at, or 'unknown'. Recorded in each
-    metrics.json so a result kept across a code change is at least traceable."""
+    """Short git commit the run was produced at (with a '-dirty' suffix if the
+    working tree had uncommitted changes), or 'unknown'. A bare commit hash lies
+    when the code was edited but not committed — the run then records the previous
+    commit as though the code were unchanged (audit #12), so flag dirtiness."""
     import subprocess
+    cwd = os.path.dirname(os.path.abspath(__file__))
     try:
-        return subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=os.path.dirname(os.path.abspath(__file__)),
+        rev = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=cwd,
             stderr=subprocess.DEVNULL,
         ).decode().strip()
     except Exception:
         return "unknown"
+    try:
+        dirty = subprocess.check_output(
+            ["git", "status", "--porcelain"], cwd=cwd, stderr=subprocess.DEVNULL,
+        ).decode().strip()
+        return rev + ("-dirty" if dirty else "")
+    except Exception:
+        return rev
+
+
+def _dataset_hash(csv_path: str) -> str:
+    """SHA-256 (first 16 hex) of the metadata CSV *contents* — not its path. Two
+    runs that point at the same path but a MODIFIED csv would otherwise look
+    identical in provenance (audit #13). 'missing' if the file is absent."""
+    import hashlib
+    if not csv_path or not os.path.exists(csv_path):
+        return "missing"
+    h = hashlib.sha256()
+    with open(csv_path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()[:16]
+
+
+def _provenance(run_cfg, bench) -> dict:
+    """The scientific fingerprint of a run: everything that must match for two
+    seeds/results to be COMPARABLE. aggregate.py refuses to average across
+    differing fingerprints; already_done() refuses to reuse a stale one.
+
+    Includes the fixed PROTOCOL constants (weight decay, EMA, CB-Focal beta/gamma,
+    crop resolution, small-object rule, augmentation) so the saved result fully
+    describes the experiment even though these live in code, not the run YAML
+    (audit #31/#32)."""
+    from bioreef import protocol
+    return {
+        "code_revision": _git_revision(),
+        "dataset_sha256": _dataset_hash(bench.csv_path),
+        "benchmark": {
+            "min_samples": bench.min_samples,
+            "min_deployments": bench.min_deployments,
+            "filter_placeholders": bench.filter_placeholders,
+            "ratios": list(bench.ratios),
+            "split_seed": bench.split_seed,
+        },
+        "run_config": run_cfg.to_serializable_dict(),
+        "protocol": protocol.as_dict(),
+    }
 
 
 def parse_args():
@@ -105,8 +153,31 @@ class ResultWriter:
         self.dir = os.path.join(results_dir, slug, f"seed{seed}")
         self.metrics_path = os.path.join(self.dir, "metrics.json")
 
-    def already_done(self) -> bool:
-        return os.path.exists(self.metrics_path)
+    def already_done(self, provenance=None) -> bool:
+        """A run counts as done only if metrics.json exists AND (when a current
+        provenance fingerprint is supplied) the STORED fingerprint matches it. This
+        stops a fixed-bug re-run from being silently skipped in favour of the stale
+        result produced by the old code (audit #11). Legacy results with no stored
+        provenance are treated as done (nothing to compare) but warned about."""
+        if not os.path.exists(self.metrics_path):
+            return False
+        if provenance is None:
+            return True
+        try:
+            with open(self.metrics_path, encoding="utf-8") as f:
+                stored = json.load(f).get("provenance")
+        except Exception:
+            return True
+        if stored is None:
+            print(f"[warn] {self.metrics_path} has no provenance fingerprint "
+                  "(pre-provenance result) — cannot verify it matches the current "
+                  "code/data; treating as done. Use --overwrite to force a re-run.")
+            return True
+        if stored != provenance:
+            print(f"[stale] {self.metrics_path} provenance differs from the current "
+                  "code/data — re-running (the stored result is out of date).")
+            return False
+        return True
 
     def _yaml(self, obj_dict, name):
         import yaml
@@ -134,15 +205,19 @@ class ResultWriter:
             torch.save({"model": model.state_dict(), "idx_to_sp": idx_to_sp,
                         "run_config": run_cfg.__dict__, "benchmark_config": bench.__dict__},
                        os.path.join(self.dir, "checkpoint.pt"))
-        # Stamp the code revision so a result carried over from before a code
-        # change is at least DETECTABLE (2.7). Cheap; does not gate skipping.
-        result = dict(result, code_revision=_git_revision())
+        # Stamp the full provenance fingerprint (code rev + dataset hash + benchmark
+        # def + resolved run config). already_done() and aggregate.py compare it, so
+        # a result from stale code/data is detected instead of silently reused/averaged.
+        prov = _provenance(run_cfg, bench)
+        result = dict(result, code_revision=prov["code_revision"], provenance=prov)
         self._atomic(self.metrics_path, lambda f: json.dump(result, f, indent=2))
 
 
 def execute_run(run_cfg, bench, seed, args, device):
     writer = ResultWriter(args.results_dir, run_cfg.slug, seed)
-    if writer.already_done() and not args.overwrite:
+    # Skip only if a MATCHING result exists — provenance-aware, so a re-run after a
+    # code/data change is not silently skipped in favour of the stale result.
+    if writer.already_done(_provenance(run_cfg, bench)) and not args.overwrite:
         print(f"[skip] {run_cfg.slug} seed{seed} already done ({writer.metrics_path})")
         return
 
