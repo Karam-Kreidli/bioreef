@@ -13,16 +13,32 @@ logger = logging.getLogger("bioreef.data.taxonomy")
 
 _PLACEHOLDER_SPECIES = {
     "unidentified", "fish", "unknown", "unidentifiable", "other", "spp",
+    "sp", "unidentified fish", "unknown fish", "indet", "incertae sedis",
 }
-_SP_PATTERN = _re.compile(r"^sp\d+$", _re.IGNORECASE)
+# Uncertain / open-nomenclature epithets that are NOT a determinate species:
+#   sp / sp. / sp1 / spp / spp.   -> unidentified to species
+#   cf. / aff.                    -> "compares with / has affinity to" (tentative)
+#   indet.                        -> indeterminate
+# Matched as a WHOLE epithet token or a leading qualifier, case-insensitively.
+_SP_PATTERN = _re.compile(
+    r"^(sp|spp)\.?\s*\d*$"           # sp, sp., sp1, spp, spp.
+    r"|^(cf|aff|indet)\.?(\s|$)"     # cf. / aff. / indet. as a leading qualifier
+    r"|\b(cf|aff)\.\s",              # ... or embedded 'Genus cf. epithet'
+    _re.IGNORECASE,
+)
 
 
 def is_placeholder_species(name) -> bool:
-    """True if the species label is a placeholder (sp1, sp3, unidentified, ...)."""
+    """True if the species label is a placeholder / open-nomenclature, uncertain
+    ID: sp / sp. / sp1 / spp / spp. / cf. / aff. / indet. / unidentified / etc.
+    These are not determinate species and must not become benchmark classes."""
     if not isinstance(name, str):
         return True
     s = name.strip().lower()
-    return s in _PLACEHOLDER_SPECIES or bool(_SP_PATTERN.match(s))
+    if s in _PLACEHOLDER_SPECIES:
+        return True
+    # check the bare epithet too (labels may be 'Genus sp.' or just 'sp.')
+    return bool(_SP_PATTERN.search(s))
 
 
 def get_taxonomy_tree(csv_path: str) -> dict:

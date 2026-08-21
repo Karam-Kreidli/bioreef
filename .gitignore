@@ -38,6 +38,7 @@ wandb/
 /frames/
 *.csv
 !splits/*.csv
+!configs/*.csv          # versioned source configs (e.g. taxonomy_corrections.csv)
 # The crops live INSIDE the package dir: bioreef/data/frames/. The rules above
 # are root-anchored (so they never hide the bioreef/data/ PACKAGE code), which
 # means they do NOT match there — name the data subdirs explicitly. Without
@@ -55,3 +56,6 @@ matanet/ozfish_data/
 Thumbs.db
 .vscode/
 .idea/
+
+# graphify knowledge-graph outputs (local build artifacts)
+graphify-out/

@@ -1,0 +1,4 @@
+type,key,corrected,reason
+genus,pterocaesio,Pterocaesio,Lowercase variant of the genus Pterocaesio (capitalization normalization).
+genus,Epinephalis,Epinephelus,Misspelling of the grouper genus Epinephelus.
+family,Epinephelus faveatus,Serranidae,"Epinephelus is a grouper genus (family Serranidae); some metadata rows mislabel it Percichthyidae (temperate perches). Keyed by binomial because the wrong family may be valid for other species."

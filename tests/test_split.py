@@ -16,6 +16,8 @@ import os
 import sys
 from collections import defaultdict
 
+import pytest
+
 import bioreef.data.split as split_mod
 from bioreef.data.split import split_dataset, deployment_id
 
@@ -46,8 +48,7 @@ def _fold_of_deployment(samples_by_fold):
 
 def test_real_split_is_leakage_safe():
     if not os.path.exists(CSV):
-        print(f"SKIP: CSV not found at {CSV}")
-        return
+        pytest.skip(f"real OzFish CSV not found at {CSV} (integration test)")
 
     train, val, test, num_classes, c2s, spc = _run_split(seed=0)
     folds = {"train": train, "val": val, "test": test}
@@ -93,8 +94,7 @@ def test_real_split_is_leakage_safe():
 
 def test_split_reproducible():
     if not os.path.exists(CSV):
-        print("SKIP: CSV not found")
-        return
+        pytest.skip("real OzFish CSV not found (integration test)")
     a = _run_split(seed=0)[0]
     b = _run_split(seed=0)[0]
     assert [s["img_path"] for s in a] == [s["img_path"] for s in b]
@@ -116,8 +116,7 @@ def test_split_hashseed_invariant():
     asserts the fold assignment is byte-identical."""
     import subprocess
     if not os.path.exists(CSV):
-        print("SKIP: CSV not found")
-        return
+        pytest.skip("real OzFish CSV not found (integration test)")
 
     repo = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     prog = (
@@ -135,6 +134,83 @@ def test_split_hashseed_invariant():
         sigs.append(out.strip().splitlines()[-1])
     assert len(set(sigs)) == 1, f"split varies with PYTHONHASHSEED: {set(sigs)}"
     print(f"test_split_hashseed_invariant OK (identical across 4 hash seeds: {sigs[0][:20]}...)")
+
+
+# --- synthetic-fixture tests (always run; no external data needed) -----------
+# These give the split logic REAL coverage on a clean checkout, where the real-CSV
+# tests above skip (audit #21: previously those printed SKIP + returned, counting
+# as PASSED and giving false confidence).
+
+def _write_synthetic_csv(tmp_path):
+    """A tiny leakage-testable dataset: several species, each spread over enough
+    deployments to be splittable, plus stereo L/R pairs and multi-fish frames."""
+    import csv as _csv
+    rows = []
+    families = {"Lutjanidae": "Lutjanus", "Serranidae": "Epinephelus",
+                "Labridae": "Thalassoma"}
+    # 3 species, each in 6 deployments (>=3 needed), ~30 crops each (>=20 needed).
+    for fam, genus in families.items():
+        sp_epithet = fam[:4].lower()
+        for dep in range(6):
+            depid = f"D{fam[:2]}{dep:03d}"
+            for frame in range(5):
+                for cam in ("L", "R"):                 # stereo pair -> same dep
+                    fn = f"{depid}_{cam}.avi.{frame}.png"
+                    # two fish in each frame (distinct bboxes) -> multi-fish
+                    for k in range(2):
+                        rows.append({
+                            "file_name": fn, "x0": 10 + k * 50, "y0": 10,
+                            "x1": 40 + k * 50, "y1": 40,
+                            "family": fam, "genus": genus, "species": sp_epithet,
+                        })
+    p = tmp_path / "synthetic.csv"
+    with open(p, "w", encoding="utf-8", newline="") as f:
+        w = _csv.DictWriter(f, fieldnames=["file_name", "x0", "y0", "x1", "y1",
+                                           "family", "genus", "species"])
+        w.writeheader()
+        w.writerows(rows)
+    return str(p)
+
+
+def _split_synthetic(csv_path, seed=0):
+    real = os.path.exists
+    split_mod.os.path.exists = lambda p: True if str(p).endswith(".png") else real(p)
+    try:
+        return split_dataset(csv_path, img_dir="", min_samples=20, min_deployments=3,
+                             seed=seed)
+    finally:
+        split_mod.os.path.exists = real
+
+
+def test_synthetic_split_is_leakage_safe(tmp_path):
+    csv_path = _write_synthetic_csv(tmp_path)
+    tr, va, te, nc, c2s, spc = _split_synthetic(csv_path)
+    folds = {"train": tr, "val": va, "test": te}
+    deps = {f: set(s["deployment"] for s in folds[f]) for f in folds}
+    assert not (deps["train"] & deps["val"]), "train/val deployment leak"
+    assert not (deps["train"] & deps["test"]), "train/test deployment leak"
+    assert not (deps["val"] & deps["test"]), "val/test deployment leak"
+    assert nc == 3, f"expected 3 synthetic species, got {nc}"
+
+
+def test_synthetic_split_reproducible(tmp_path):
+    csv_path = _write_synthetic_csv(tmp_path)
+    a = _split_synthetic(csv_path, seed=0)
+    b = _split_synthetic(csv_path, seed=0)
+    ga = sorted(s["img_path"] + str(s["bbox"]) for s in a[0])
+    gb = sorted(s["img_path"] + str(s["bbox"]) for s in b[0])
+    assert ga == gb, "same seed produced different splits"
+
+
+def test_synthetic_stereo_pairs_share_fold(tmp_path):
+    csv_path = _write_synthetic_csv(tmp_path)
+    tr, va, te, nc, c2s, spc = _split_synthetic(csv_path)
+    dep_fold = _fold_of_deployment({"train": tr, "val": va, "test": te})
+    # every sample's deployment maps to exactly its own fold (stereo L/R share a
+    # deployment id, so grouping by deployment keeps them together)
+    for fold, samples in (("train", tr), ("val", va), ("test", te)):
+        for s in samples:
+            assert dep_fold[s["deployment"]] == fold
 
 
 if __name__ == "__main__":

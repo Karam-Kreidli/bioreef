@@ -42,22 +42,45 @@ def deployment_id(file_name: str) -> str:
 
 # Source-data genus typos -> canonical spelling. Without this, a misspelled
 # genus splits one species into two classes (or, with the binomial key, creates a
-# spurious extra class). Applied in binomial() so every code path (split,
-# taxonomy tree, export) canonicalizes identically. Extend as new typos surface.
-_GENUS_CANON = {
+# Taxonomy corrections are loaded from the VERSIONED, released manifest
+# configs/taxonomy_corrections.csv (type,key,corrected,reason) so these curation
+# decisions are an auditable artifact, not constants buried in source (audit #52).
+# The in-code defaults below are the fallback if the CSV is absent, and keep the
+# two in sync. Applied in binomial()/the taxonomy tree so every path (split,
+# tree, export) canonicalizes identically. Extend the CSV as new typos surface.
+_GENUS_CANON_DEFAULT = {
     "pterocaesio": "Pterocaesio",   # lowercase variant of Pterocaesio
     "Epinephalis": "Epinephelus",   # misspelling of Epinephelus
 }
-
-# Species -> correct family, for binomials whose metadata carries a WRONG family
-# on some rows. Keyed by binomial (not family alone: the wrong family may be
-# valid for other species). Applied in the taxonomy tree so every path agrees.
-# Extend as scripts/check_taxonomy_conflicts.py surfaces more.
-_FAMILY_CANON = {
-    # Epinephelus is a grouper genus (Serranidae); some rows mislabel it
-    # Percichthyidae (temperate perches).
+_FAMILY_CANON_DEFAULT = {
     "Epinephelus faveatus": "Serranidae",
 }
+
+
+def _load_taxonomy_corrections():
+    """Load configs/taxonomy_corrections.csv -> (genus_map, family_map). Falls back
+    to the in-code defaults if the file is missing. Cached at module import."""
+    path = os.path.join(os.path.dirname(__file__), "..", "..", "configs",
+                        "taxonomy_corrections.csv")
+    if not os.path.exists(path):
+        return dict(_GENUS_CANON_DEFAULT), dict(_FAMILY_CANON_DEFAULT)
+    import csv as _csv
+    genus, family = {}, {}
+    with open(path, encoding="utf-8", newline="") as f:
+        for row in _csv.DictReader(f):
+            t = (row.get("type") or "").strip().lower()
+            key, corrected = row.get("key", "").strip(), row.get("corrected", "").strip()
+            if not key or not corrected:
+                continue
+            if t == "genus":
+                genus[key] = corrected
+            elif t == "family":
+                family[key] = corrected
+    # Keep the code defaults as a floor so a partial CSV never drops a known fix.
+    return {**_GENUS_CANON_DEFAULT, **genus}, {**_FAMILY_CANON_DEFAULT, **family}
+
+
+_GENUS_CANON, _FAMILY_CANON = _load_taxonomy_corrections()
 
 
 def canonical_genus(genus) -> str:
@@ -198,6 +221,18 @@ def _load_rows(csv_path: str, img_dir: str, extra_img_dirs, filter_placeholders,
             if len(bad_examples) < 5:
                 bad_examples.append(f"{fname}: bbox ({bx0},{by0},{bx1},{by1})")
             continue
+        # Reject only ABSURD boxes — a dimension beyond any real BRUVS frame. A
+        # positive-but-huge box (e.g. 100000 px wide) passes the x1>x0 check yet
+        # would allocate a giant 3x/5x context array and produce garbage. NOTE:
+        # slightly-negative origins (e.g. x0=-18) are LEGITIMATE — a detection box
+        # clipped at the frame edge — and _extract_crop clamps them correctly, so
+        # do NOT reject them. MAX_DIM is a generous ceiling (well above 4K).
+        MAX_DIM = 12000
+        if (bx1 - bx0) > MAX_DIM or (by1 - by0) > MAX_DIM:
+            bad_bbox += 1
+            if len(bad_examples) < 5:
+                bad_examples.append(f"{fname}: oversized bbox ({bx0},{by0},{bx1},{by1})")
+            continue
         # floor the mins, ceil the maxes — NOT int() on all four. int() truncates,
         # so a sub-pixel box like (1.2, 1.8) would collapse to int 1..1 = zero
         # width AFTER passing the float check. floor/ceil keeps it >= 1px.
@@ -232,11 +267,44 @@ def _load_rows(csv_path: str, img_dir: str, extra_img_dirs, filter_placeholders,
                        "defined by the RESOLVED rows — set data.strict_images: true "
                        "to make this an error instead.", n_missing_img)
     if bad_bbox:
-        # Always loud: a malformed box is a data error, not a benchmark-scope
-        # choice like a missing image, so this warns regardless of strict_images.
-        logger.warning("%d rows skipped (invalid bounding box: non-numeric, "
-                       "non-finite, or x1<=x0 / y1<=y0). Examples: %s",
-                       bad_bbox, "; ".join(bad_examples))
+        msg = (f"{bad_bbox} rows have an invalid bounding box (non-numeric, "
+               f"non-finite, or x1<=x0 / y1<=y0). Examples: {'; '.join(bad_examples)}")
+        # For the FROZEN benchmark (strict_images), a malformed box silently changes
+        # the crop set / species counts / split sizes — so it is a hard error, same
+        # rationale as a missing image. For exploratory work it stays a warning.
+        if strict_images:
+            raise SystemExit(
+                f"[strict_images] {msg}\nSkipping these would silently change the "
+                f"benchmark. Fix or explicitly exclude the malformed annotations "
+                f"(via a curation manifest), or set data.strict_images: false for "
+                f"exploratory work.")
+        logger.warning("%s (rows skipped; set data.strict_images: true to make this "
+                       "an error for the final benchmark)", msg)
+
+    # Duplicate-annotation guard (audit #58). annotation_id = file_name + bbox; an
+    # EXACT duplicate row would be counted twice -> inflated class frequencies,
+    # wrong CB-Focal weights, and double training exposure of that crop. The
+    # released-split exporter already forbids this; the training loader must too.
+    seen_ids = {}
+    dup = 0
+    dup_examples = []
+    for r in raw:
+        aid = r["annotation_id"]
+        if aid in seen_ids:
+            dup += 1
+            if len(dup_examples) < 5:
+                dup_examples.append(aid)
+        else:
+            seen_ids[aid] = True
+    if dup:
+        dmsg = (f"{dup} duplicate annotations (identical file_name + bbox). Examples: "
+                f"{'; '.join(dup_examples)}")
+        if strict_images:
+            raise SystemExit(
+                f"[strict_images] {dmsg}\nEach would be counted twice, inflating "
+                f"class frequencies and CB-Focal weights. De-duplicate the metadata "
+                f"CSV before freezing the benchmark.")
+        logger.warning("%s (kept as-is; set data.strict_images: true to reject)", dmsg)
     return raw
 
 
@@ -356,6 +424,23 @@ def split_dataset(
                      strict_images=strict_images)
 
     kept_species = benchmark_species(raw, min_samples, min_deployments)
+
+    # Taxonomy completeness is part of the benchmark DEFINITION, so validate it once
+    # here for EVERY run — not only when HSLM builds its maps (audit #54). Otherwise
+    # a flat baseline (C03/C06/...) would happily train on a class whose genus/family
+    # is missing, while an HSLM run on the same benchmark refuses it — an asymmetry
+    # that makes the panel non-comparable. Every benchmark species must resolve to a
+    # genus and family in the taxonomy tree.
+    from bioreef.data.taxonomy import get_taxonomy_tree
+    tree = get_taxonomy_tree(csv_path)
+    no_tax = [sp for sp in kept_species if sp not in tree]
+    if no_tax:
+        raise RuntimeError(
+            f"{len(no_tax)} benchmark species have no taxonomy (genus/family) entry "
+            f"in {csv_path} (e.g. {no_tax[:5]}). Taxonomy is part of the benchmark "
+            f"definition and every model (flat or hierarchical) must agree on it. "
+            f"Fix the metadata / taxonomy corrections before running the panel.")
+
     species_to_class = {sp: i for i, sp in enumerate(kept_species)}
     class_to_species = {i: sp for sp, i in species_to_class.items()}
 
@@ -374,7 +459,19 @@ def split_dataset(
     sp_counts = [0] * len(kept_species)
     for s in folds["train"]:
         sp_counts[s["class_idx"]] += 1
-    sp_counts = [max(1, c) for c in sp_counts]
+    # A benchmark class with ZERO training examples is catastrophic: CB-Focal would
+    # weight it from a fabricated count and the model can never learn it. Do NOT
+    # silently clamp to 1 (which hides the condition) — a species that clears the
+    # inclusion thresholds must actually land in TRAIN. Fail loudly instead.
+    zero = [class_to_species[i] for i, c in enumerate(sp_counts) if c == 0]
+    if zero:
+        raise RuntimeError(
+            f"{len(zero)} benchmark species have ZERO training crops after the "
+            f"split (e.g. {zero[:5]}). The greedy grouped split failed to place "
+            f"them into train — CB-Focal weights and learnability are undefined. "
+            f"Fix the split (raise min_deployments, or enforce train coverage) "
+            f"rather than training a class with no examples."
+        )
 
     _log_split_summary(folds, dep_fold, kept_species, samples)
 

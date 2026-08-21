@@ -15,8 +15,13 @@ class ContextHarvester:
     4-stream concentric crops for MCEAM (all letterboxed + ImageNet-normalized):
         roi (1x) morphology . social (3x) neighbours . habitat (5x) substrate .
         full_frame macro-environment.
-    Size-adaptive: a fish below small_object_threshold is first cropped at
-    highres_initial to preserve texture before downsampling.
+    Size-adaptive: a fish below small_object_threshold gets an extra
+    letterbox-to-highres_initial step before the final resize to target_res.
+    NOTE: since the source crop already exists at its native resolution, this
+    intermediate up-then-down resize does NOT recover lost detail — it only changes
+    the interpolation path (and adds a mild blur). It is retained for exact
+    reproducibility of the reported runs; whether it helps is an open ablation, so
+    do not describe it as "preserving texture" in the paper without that evidence.
     """
 
     IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
@@ -44,10 +49,17 @@ class ContextHarvester:
         x2 = x1 + crop_w
         y2 = y1 + crop_h
 
-        src_x1, src_y1 = max(0, x1), max(0, y1)
-        src_x2, src_y2 = min(w, x2), min(h, y2)
+        # Clamp BOTH ends into [0, w] / [0, h]. Clamping only one end (max(0,x1),
+        # min(w,x2)) breaks for a box entirely off one side: e.g. x1=x2=-50 gives
+        # src_x1=0, src_x2=-50 -> a reversed/negative-width slice. Clamping both
+        # ends yields an empty (not reversed) intersection, which copies nothing.
+        src_x1, src_x2 = min(max(x1, 0), w), min(max(x2, 0), w)
+        src_y1, src_y2 = min(max(y1, 0), h), min(max(y2, 0), h)
 
         crop = np.zeros((crop_h, crop_w, 3), dtype=frame.dtype)
+        # No overlap with the frame -> return the zero-padded canvas as-is.
+        if src_x2 <= src_x1 or src_y2 <= src_y1:
+            return crop
         dst_x1 = src_x1 - x1
         dst_y1 = src_y1 - y1
         dst_x2 = dst_x1 + (src_x2 - src_x1)
@@ -60,7 +72,9 @@ class ContextHarvester:
         Naive square resize would distort elongated species (e.g. barracuda)."""
         h, w = image.shape[:2]
         scale = target / max(h, w)
-        new_w, new_h = int(w * scale), int(h * scale)
+        # max(1, ...): an extreme aspect ratio can truncate the short side to 0
+        # (e.g. a 3x2000 crop scaled down), and cv2.resize raises on a zero dim.
+        new_w, new_h = max(1, int(w * scale)), max(1, int(h * scale))
         resized = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
         canvas = np.zeros((target, target, 3), dtype=image.dtype)
         pad_y = (target - new_h) // 2
