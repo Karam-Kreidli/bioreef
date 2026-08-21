@@ -1,21 +1,23 @@
-# C09 — THE PROPOSED REFERENCE. frozen DINOv3 . MCEAM 1 block / 3 scales . HSLM .
-#   CB-Focal + RANDOM sampler. Every ablation (A1-A5, A7) changes exactly one field
-#   of THIS config; A6 is the balanced-sampler ablation of it (sampler random ->
-#   balanced). Random sampling wins on all three headline metrics (macroAcc, HD,
-#   top1) over balanced on this long-tailed benchmark, so it is the reference.
+# C09 — FROZEN REFERENCE / start of the unfreeze frontier. frozen DINOv3 . MCEAM
+#   1 block / 3 scales . HSLM . CB-Focal + RANDOM sampler. This is the frozen
+#   baseline the config-only ablations (A1-A7) branch from — it is NOT the paper's
+#   proposed model (that is A15, the unfrozen HSLM+CE config). C09 anchors the
+#   frozen end of the unfreeze frontier C09 -> A9 -> A10 -> A11.
 run_id: C09
 name: proposed
 priority: core
 description: >
-  The proposed model: frozen DINOv3 ViT-B/16, MCEAM single-block cross-attention
-  over ROI/social/habitat context, marginalization HSLM hierarchy loss, CB-Focal
-  species term, RANDOM sampler. All ablations (A1-A7) change exactly one field of
-  this config.
+  Frozen reference: frozen DINOv3 ViT-B/16, MCEAM single-block cross-attention over
+  the ROI query + three context scales, marginalization HSLM hierarchy loss,
+  CB-Focal species term, RANDOM sampler. The frozen baseline / start of the
+  adaptation-depth frontier; the proposed model is the unfrozen A15. Config-only
+  ablations (A1-A7) change exactly one field of this config.
 
 model_family: dino
 backbone: dinov3
-context_levels: 3          # ROI / social(3x) / habitat(5x)
-attention_depth: 1         # single block
+context_levels: 3          # 3 CONTEXT streams (social 3x / habitat 5x / full_frame);
+                           # the ROI is the separate attention QUERY, not counted here
+attention_depth: 1         # single cross-attention block
 unfreeze_blocks: 0         # fully frozen backbone
 
 hslm: true                 # marginalization hierarchy loss

@@ -18,24 +18,28 @@ runs:
   - C03        # ResNet-50
   - C05        # ConvNeXt-T
   - C07        # Swin-B
-  - C09        # proposed reference (random sampler)
+  - C09        # FROZEN reference / start of the unfreeze frontier (random sampler)
   # C08 MATANet runs from the official repo, not here — see configs/runs/C08_matanet.yaml
 
-  # --- ablations (K.2) — renumbered contiguous A1-A11 (2026-07-17) ---
-  - A1         # DINOv2 backbone
+  # --- ablations off the frozen reference C09 ---
+  - A1         # DINOv2 backbone (frozen backbone-generation comparison)
   - A2         # no MCEAM (context off) — also the ROI-only anchor
   - A3         # single context stream (social only)
   - A4         # attention depth 2
-  - A5         # attention depth 4 (was A4b)
-  - A6         # flat softmax, no hierarchy (was A5)
-  - A7         # balanced sampler (was A6) — the sampler ablation
-  - A8         # plain CE species loss (was A7)
-  - A9         # adaptation: last 2 backbone blocks unfrozen (was A10)
-  - A10        # adaptation: last 4 backbone blocks unfrozen (was A11)
-  - A11        # adaptation: all 12 blocks unfrozen — full-FT frontier endpoint (was A12)
-  # Retired (configs kept as RETIRED_*.yaml for traceability):
-  #   old A8 (no_longtail) — became identical to A7/now-A8 after the sampler swap
-  #   old A9 (roi_only)    — mechanically equivalent to A2 (context_levels=0)
+  - A5         # attention depth 4
+  - A6         # flat softmax, no hierarchy
+  - A7         # balanced sampler — the sampler ablation
+  - A8         # plain CE species loss
+  - A9         # adaptation: last 2 backbone blocks unfrozen
+  - A10        # adaptation: last 4 backbone blocks unfrozen
+  - A11        # adaptation: all blocks unfrozen — full fine-tune, lr 1e-4
+
+  # --- unfrozen loss chain + the PROPOSED model ---
+  - A12        # A11 at lr 1e-5 (HSLM + CB-Focal, unfrozen)
+  - A13        # unfrozen flat CB-Focal (hierarchy off)
+  - A14        # unfrozen flat plain CE (loss-chain endpoint)
+  - A15        # PROPOSED MODEL: unfrozen HSLM + plain CE (lr 1e-5)
+  - A16        # A15 with DINOv2-base backbone (unfrozen backbone comparison)
 
   # --- Optional tier (K.1) — breadth for the fine-tuned baselines ---
   - C04        # EfficientNetV2-S fine-tuned

@@ -1,8 +1,15 @@
-# A7 — sampler ablation: random -> balanced. (C09 reference with exactly sampler
+# A7 — sampler ablation: random -> balanced. (C09 reference with exactly `sampler`
 # changed.) On this long-tailed benchmark balanced sampling UNDERPERFORMS the
 # random-sampler reference (C09) on macroAcc, HD and top1 — reported as the
-# sampler-choice finding. NOTE: filename kept as A6_random_sampler.yaml for git
-# history; the run's name/slug is A6_balanced_sampler (it IS the balanced run).
+# sampler-choice finding.
+#
+# RE-RUN REQUIRED before the paper: the balanced sampler's per-epoch exposure was
+# fixed (bioreef/training/sampler.py) to draw ~N_train samples/epoch, matching the
+# random reference. The previously stored A7 result trained on a SHORTER epoch
+# (~40% of the reference's optimizer steps), confounding the sampler change with
+# training budget. Delete results/A7_balanced_sampler/seed*/metrics.json and re-run
+# for a valid one-factor comparison. (The conclusion — balanced loses — is expected
+# to hold, but the number must come from the corrected run.)
 run_id: A7
 name: balanced_sampler
 priority: core

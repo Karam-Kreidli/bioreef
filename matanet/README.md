@@ -8,10 +8,16 @@ leakage-safe split — not to reimplement it. This folder is the bridge.
   "Smartsystem Lab"), pinned commit `922c2176893ef1d03de8b8701cd882b5764f9ae9`.
 - **What we change:** only hardcoded FathomNet paths (via `patch_matanet.py`). The
   model, MCEAM, and hierarchical loss are untouched.
-- **Backbone:** DINOv2-large, fine-tuned (as published) — this is the paper's
-  stated fairness caveat vs our frozen DINOv3-base.
-- **Taxonomy:** 3 levels (Family/Genus/Species), matching our HSLM exactly, so
-  both methods get identical hierarchical supervision.
+- **Backbone:** DINOv2-large, fine-tuned (as published) — a fairness caveat: it is
+  a ~1 B-parameter, 4-encoder fine-tuned model vs our fine-tuned DINOv3-base (~86 M
+  backbone). The comparison is therefore also one of parameter efficiency.
+- **Taxonomy:** 3 levels (Family/Genus/Species) — MATANet is given the **identical
+  taxonomy tree** as our HSLM (same 321 species → genera → families). The
+  *supervision mechanism* is NOT identical: our HSLM marginalises species
+  probabilities up to the parents (one head), whereas MATANet uses its own native
+  per-level heads with `lambda_sub_h`/`lambda_ce`. Both are scored by our common
+  evaluation harness at the end. So: same taxonomy and same evaluation — not the
+  same hierarchical objective.
 
 ## What the bridge does
 

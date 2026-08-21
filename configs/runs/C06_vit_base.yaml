@@ -1,9 +1,12 @@
 # C06 — ViT-B/16 fine-tuned (plain transformer). Single ROI crop, flat CE.
 #
-# The direct fine-tuned counterpart to the frozen DINOv3 ViT-B/16 of C09/C01:
-# SAME architecture and scale, only the backbone is trained. So C06-vs-C09
-# isolates frozen-vs-fine-tuned WITHIN one architecture family — the cleanest
-# read on the frozen-feature question, without MATANet's confounds (C08).
+# A ViT-B/16 baseline at the same scale as C09's DINOv3 ViT-B/16, fine-tuned
+# end-to-end on the ROI crop. NOTE: C06-vs-C09 is NOT a clean frozen-vs-FT
+# isolation — they also differ in pretrained weights (ImageNet vs DINOv3 SSL),
+# context (C06 has no MCEAM), hierarchy (flat CE vs HSLM), sampler, and head.
+# The CLEAN adaptation-depth comparison is the C09 -> A9 -> A10 -> A11 frontier,
+# which holds everything but unfreeze_blocks fixed. C06 stands as a plain
+# fine-tuned ViT-B baseline, not the frozen-vs-FT control.
 run_id: C06
 name: vit_base
 priority: optional

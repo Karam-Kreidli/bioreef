@@ -43,6 +43,10 @@ seeds:
 - 1
 - 2
 
-# NOTE: DINOv2-base and DINOv3-base are both ViT-B/16 (~86M backbone params), so
-# the memory/time profile matches A15 (~14 GB batch 32 on the 24 GB card). The
-# DINOv2-base weights were already pre-fetched on the login node for A1.
+# NOTE: DINOv2-base and DINOv3-base are both ViT-B (~86M backbone params), but NOT
+# the same patch size — DINOv3 is patch-16 (196 patches at 224px) while
+# facebook/dinov2-base is patch-14 (256 patches). So A16 vs A15 is a BACKBONE
+# comparison (weights + pretraining generation + patch grid), not a perfectly
+# controlled "same architecture, different pretraining" swap — state it as such.
+# Memory/time profile still ~matches A15 (~14 GB batch 32 on the 24 GB card). The
+# DINOv2-base weights were already pre-fetched for A1.

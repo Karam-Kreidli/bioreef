@@ -8,12 +8,13 @@
 # "last-2-blocks recover X% of the gap" percentages are computed against a real
 # same-model endpoint rather than against the confounded C06.
 #
-# unfreeze_blocks=12 unfreezes all 12 of 12 transformer blocks (+ final norm):
-# ~85M of 86.6M backbone params trainable. NOTE: patch embeddings and pre-block
-# layers stay frozen (this method unfreezes transformer blocks + final norm), so
-# A11 is "all transformer blocks" full-FT, marginally less than a timm-style
-# train-everything full-FT (C06). Documented so the small difference is not a
-# hidden confound.
+# unfreeze_blocks=12 (== total blocks) triggers the FULL-unfreeze path in
+# ViTBackbone.unfreeze_blocks(): it sets requires_grad=True on the ENTIRE backbone
+# — all 12 transformer blocks AND the patch embedding, CLS/register tokens,
+# positional embeddings and norms (~86.6M params). So A11 is a genuine full
+# fine-tune, equivalent to a timm-style train-everything (C06), not a
+# blocks-only partial FT. (Earlier docs claimed patch-embed stayed frozen; the
+# code is stricter than that — see backbone.py unfreeze_blocks, the n==total branch.)
 run_id: A11
 name: unfreeze_all
 priority: optional
