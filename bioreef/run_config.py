@@ -8,9 +8,9 @@ This is the reproducibility unit: a reviewer reads configs/runs/C09_proposed.yam
 to see precisely what produced a table row, and re-runs it with
     python scripts/run.py C09 --seed 0
 
-The fields mirror scripts/train.py's CLI flags 1:1, so run.py just translates a
-RunConfig into a train.py invocation — the training loop stays the single source
-of truth.
+run.py builds the model + training config from this RunConfig and calls
+bioreef.training.loop.train_and_evaluate() directly — a single-GPU training loop
+that is the one source of truth for every result in the panel.
 """
 
 import os
@@ -34,7 +34,7 @@ class RunConfig:
     #   matanet : the official MATANet repo, adapted (C08)
     model_family: str = "dino"
 
-    # --- dino-family model (maps to train.py model flags) ---
+    # --- dino-family model ---
     backbone: str = "dinov3"
     context_levels: int = 3
     attention_depth: int = 1
@@ -50,7 +50,10 @@ class RunConfig:
     # Loss / sampler (long-tail handling)
     hslm: bool = True                # False -> --no_hslm
     loss: str = "cbfocal"            # cbfocal | ce
-    sampler: str = "balanced"        # balanced | random
+    sampler: str = "random"          # random | balanced — random is the protocol
+                                     # default (it wins on this long tail; A7 ablates
+                                     # to balanced). Every config sets this explicitly;
+                                     # the default only affects ad-hoc one-offs.
     family_weight: float = 3.0
     genus_weight: float = 2.0
     species_weight: float = 1.0
@@ -183,25 +186,3 @@ class RunConfig:
         if len(matches) > 1:
             raise SystemExit(f"ambiguous run id '{run_id}': {matches}")
         return cls.from_yaml(os.path.join(runs_dir, matches[0]))
-
-    def train_flags(self) -> List[str]:
-        """Translate this config into scripts/train.py CLI flags (excludes
-        --seed / --csv / --img_dir / --out, which run.py supplies per invocation)."""
-        f = [
-            "--backbone", self.backbone,
-            "--context_levels", str(self.context_levels),
-            "--attention_depth", str(self.attention_depth),
-            "--unfreeze_blocks", str(self.unfreeze_blocks),
-            "--loss", self.loss,
-            "--sampler", self.sampler,
-            "--family_weight", str(self.family_weight),
-            "--genus_weight", str(self.genus_weight),
-            "--species_weight", str(self.species_weight),
-            "--epochs", str(self.epochs),
-            "--warmup_epochs", str(self.warmup_epochs),
-            "--batch_size", str(self.batch_size),
-            "--lr", str(self.lr),
-        ]
-        if not self.hslm:
-            f.append("--no_hslm")
-        return f

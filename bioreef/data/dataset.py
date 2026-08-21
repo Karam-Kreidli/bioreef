@@ -8,13 +8,18 @@ from torch.utils.data import Dataset
 
 from bioreef.data.context import ContextHarvester
 from bioreef.data.augmentation import MarineAugmentor
-from bioreef.training.ddp import safe_imread
+from bioreef.training.runtime import safe_imread
+from bioreef import protocol
 
 
 class FishCropDataset(Dataset):
     def __init__(self, samples, is_train=True):
         self.samples = samples
-        self.harvester = ContextHarvester(target_resolution=224, small_object_threshold=0.05)
+        self.harvester = ContextHarvester(
+            target_resolution=protocol.TARGET_RESOLUTION,
+            small_object_threshold=protocol.SMALL_OBJECT_THRESHOLD,
+            highres_initial=protocol.HIGHRES_INITIAL,
+        )
         self.augmentor = MarineAugmentor(enabled=is_train)
 
     def __len__(self):
