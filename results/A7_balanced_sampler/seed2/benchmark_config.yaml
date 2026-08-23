@@ -6,8 +6,8 @@ ratios:
 - 0.15
 - 0.15
 split_seed: 0
-csv_path: /home/oelmutasim/bioreef-classify/bioreef/data/metadata/frame_metadata.csv
-img_dir: /home/oelmutasim/bioreef-classify/data/frames
+csv_path: /home/openuae/Desktop/bioreef-classify/bioreef/data/metadata/frame_metadata.csv
+img_dir: /home/openuae/Desktop/bioreef-classify/bioreef/data/frames
 extra_img_dirs: []
 strict_images: true
 device: ''
