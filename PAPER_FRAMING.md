@@ -195,7 +195,9 @@ frozen self-supervised backbone is the asset that makes small-data feasible).
 - **[OPEN]** Do we run A2-unfrozen (MCEAM on/off on the strong backbone)? Optional
   rigor; only if a reviewer would demand the context ablation on the final backbone.
 - **[OPEN]** How much to feature the frozen results at all, now that the proposed
-  model is unfrozen.
+  model is unfrozen. (Lean: demote frozen to the adaptation-frontier story — C09 is
+  the frozen anchor of the C09→A9→A10→A11 sweep, not a headline; A1's frozen
+  DINOv2>DINOv3 finding is worth one paragraph.)
 
 ---
 
@@ -246,3 +248,55 @@ number. One trainer, one code path — simpler reproducibility story for the pap
 work still pending before release (split-manifest checksums, provenance hashing,
 aggregator `--campaign` filter to exclude D1/D2 + keep the table to declared runs).
 The benchmark is the co-star contribution (§1), so this hygiene matters.
+
+---
+
+## 12. FINAL panel conclusions (2026-08-23 — all 24 configs × 3 seeds complete)
+
+The full leakage-safe panel is done, including all 3 C08/MATANet seeds. These are
+the conclusions the completed data supports — write the paper from THESE, verifying
+each number against RESULTS.md. (A shareable team briefing of this section is
+published as a private Artifact.)
+
+**[CONFIRMED — headline] A15 ties the ~1 B MATANet at ~12× fewer backbone params.**
+3-seed A15 (ViT-B, ~86 M backbone) vs C08 (~1 B): top1 0.842 vs 0.844, macro 0.690
+vs 0.692, HD 0.291 vs 0.288, mistake-sev 1.844 vs 1.843, genus/family identical —
+every gap inside the error bars. The contribution is **parameter efficiency +
+error-quality**, NOT a raw-accuracy win. This is the paper's headline and it held at
+full seeds (the seed-0 hint that C08 led on coherence was noise).
+
+**[CONFIRMED — core argument] Error SEVERITY, not top-1, is the metric story.**
+Plain CE (A14) posts a table-topping top1 (0.844) but the WORST mistake-severity of
+the unfrozen group (2.009); HSLM (A15) holds the same top1 while cutting severity to
+1.844. This is the concrete motivation for reporting HD / mistake-severity / per-
+level, not just accuracy — lead the metric-panel argument with A14-vs-A15.
+
+**[CONFIRMED] Adaptation depth is the biggest lever; context + hierarchy refine it.**
+Monotonic frontier: C09 frozen (macro .507) → A9 (.618) → A10 (.657) → A11/A15
+(~.69). Report as a curve. MCEAM + HSLM add the coherence edge on top.
+
+**[CONFIRMED] Backbone generation: matters frozen, ties fine-tuned.** Frozen DINOv2
+(A1 .538) > DINOv3 (C09 .507); fine-tuned DINOv2 (A16) ≈ DINOv3 (A15), overlapping.
+No backbone switch; report DINOv3 for lineage, note the tie. (See
+`dinov2-beats-dinov3-bioreef` memory.)
+
+**[CAVEAT — state plainly, §8] The tail is the honest weakness.** A15 tail =
+**0.444 ± 0.110** — the highest variance in the whole panel (~6× C08's ±0.017).
+C07 (Swin, .521±.018) and A11 (.549±.025) beat A15's tail, stably. Do NOT claim
+tail supremacy; for a tail-weighted deployment this is the metric to watch.
+
+**[NOTE — competitors to acknowledge] A16 and A11 are legitimately close.** A16
+(DINOv2 unfrozen) nominally edges A15 on the headline (top1 .846, HD .280,
+mistSev 1.819) but within overlapping error bars = a tie; keeping A15 for lineage is
+defensible, but the paper must not overclaim A15's superiority over A16. A11 (full
+FT, lr 1e-4) is the panel's mistake-severity champion (1.679, outside everyone's
+bars) with the best stable tail (.549) — a real trade (cooler top1 .781), and the
+natural second candidate for the deployment. Honesty about A16/A11 fits the paper's
+whole posture and pre-empts the obvious reviewer question.
+
+**[DEPLOYMENT — separate track, not the paper] Bigger-backbone ladder underway.**
+One-change-at-a-time deployment experiments on the L40S (see
+`deployment-backbone-experiments` memory): D3 = A15 recipe on DINOv3 ViT-L/16
+(training); then LLRD (D4 on ViT-B / D5 on ViT-L, both built + ready) on whichever
+wins; watching the tail specifically since that's the deployment's pain point. NOT
+part of the paper panel.

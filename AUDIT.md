@@ -167,7 +167,7 @@ Removed `scripts/train.py` + `scripts/test.py`; fixed stale refs in `run_config.
 | 67 | `patch_matanet.py` checks for expected text but not the pinned commit hash | 🔧 TODO (`git rev-parse HEAD`) |
 | 68 | C08 result provenance weaker than rest (no upstream commit / config / CSV+JSON checksums) | 🔧 TODO |
 | 69 | Ingest tolerates unknown predicted labels (closed-set → likely a mapping bug; hard-fail) | 🔧 TODO |
-| 70 | No C08 result existed at audit time | ✅ (seed 0 now done, 2026-08-17; seeds 1/2 running one at a time) |
+| 70 | No C08 result currently exists | ✅ DONE | All 3 C08 seeds complete (2026-08-23). Full panel = 24 configs × 3 seeds. C08 3-seed: top1 .844±.002, HD .288±.008 — ties A15. |
 
 ## Tests
 
