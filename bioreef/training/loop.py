@@ -130,7 +130,21 @@ def train_and_evaluate(run_cfg, bench, seed, device, batch_size=32,
 
     model = build_model(run_cfg, num_classes).to(device)
     criterion = build_loss(run_cfg, sp_counts, idx_to_sp, tree, device)
-    optimizer = optim.AdamW(trainable_parameters(model), lr=run_cfg.lr,
+    # LLRD (layer-wise LR decay) when run_cfg.layer_decay is set AND the backbone is
+    # actually being fine-tuned; otherwise the flat-LR path (unchanged for the panel).
+    ld = getattr(run_cfg, "layer_decay", None)
+    if ld is not None and not backbone_is_frozen(model):
+        from bioreef.model.factory import llrd_param_groups
+        opt_params = llrd_param_groups(model, base_lr=run_cfg.lr, layer_decay=ld)
+        log(f"[optim] layer-wise LR decay {ld} over {len(opt_params)} param groups "
+            f"(base lr {run_cfg.lr})")
+    elif ld is not None:
+        log(f"[optim] layer_decay={ld} ignored: backbone is frozen (LLRD needs an "
+            f"unfrozen backbone) — using flat LR")
+        opt_params = trainable_parameters(model)
+    else:
+        opt_params = trainable_parameters(model)
+    optimizer = optim.AdamW(opt_params, lr=run_cfg.lr,
                             weight_decay=protocol.WEIGHT_DECAY)
 
     epochs, warmup = run_cfg.epochs, run_cfg.warmup_epochs

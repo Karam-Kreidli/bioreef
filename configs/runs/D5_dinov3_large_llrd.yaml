@@ -1,0 +1,40 @@
+# D5 — D3 recipe (ViT-L backbone) + LAYER-WISE LR DECAY (LLRD).
+# DEPLOYMENT experiment, NOT a paper run. Rung 3 of the deployment ladder, applied
+# to the BIGGER backbone (ViT-L). Run THIS one if D3 (ViT-L) DID beat A15 — LLRD is
+# then tried on the winning bigger backbone. This is the most likely path (LLRD
+# helps larger backbones more).
+#
+# Identical to D3 EXCEPT `layer_decay: 0.75` — the only change. LLRD matters more on
+# a deeper backbone (ViT-L = 24 blocks), where a single flat lr is hardest to set:
+# it lets the many early layers stay near-frozen while later layers + heads adapt.
+run_id: D5
+name: dinov3_large_llrd
+priority: optional
+description: 'DEPLOYMENT ONLY (not a paper run): D3 recipe (DINOv3 ViT-L/16) + layer-wise LR decay 0.75. Rung 3 of the deployment ladder on the bigger backbone.'
+model_family: dino
+backbone: dinov3_large     # same as D3 (ViT-L/16 ~300M, embed 1024)
+context_levels: 3
+attention_depth: 1
+unfreeze_blocks: -1        # FULL fine-tune at any depth (ViT-L has 24 blocks)
+hslm: true
+loss: ce
+sampler: random
+family_weight: 3.0
+genus_weight: 2.0
+species_weight: 1.0
+epochs: 60
+warmup_epochs: 3
+# ViT-L full FT + LLRD fits the L40S at batch 32 (D3 confirmed ~35/46 GB at 32).
+batch_size: 32
+lr: 0.00001               # same base lr as D3/A15 (1e-5); LLRD decays it per depth
+layer_decay: 0.75         # <- the only change vs D3. earlier layers get smaller lr
+seeds:
+- 0
+- 1
+- 2
+
+# NOTE: layer_decay reads ViT-L's 24 blocks from the backbone automatically, so the
+# same 0.75 knob spans a wider depth range here than on ViT-B (24 vs 12 decay
+# steps) — the earliest ViT-L layers end up VERY damped, which is the intent. If the
+# backbone looks under-trained, 0.8-0.9 decays less aggressively. One change at a
+# time; do not also move base_lr or batch.

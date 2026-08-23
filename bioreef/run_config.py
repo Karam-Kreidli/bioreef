@@ -63,6 +63,12 @@ class RunConfig:
     warmup_epochs: int = 3
     batch_size: int = 32
     lr: float = 1e-4
+    # Layer-wise LR decay (LLRD) for fine-tuning large backbones. None -> flat LR
+    # (every trainable param at `lr`, the paper-panel default, unchanged). A value
+    # in (0,1), e.g. 0.75, gives earlier backbone layers exponentially smaller LRs
+    # and the heads the full `lr` — the standard recipe for big pretrained ViTs.
+    # DEPLOYMENT-only knob; no paper run sets it, so the panel is untouched.
+    layer_decay: Optional[float] = None
 
     # Early stopping (opt-in). patience = consecutive epochs with no val-HD
     # improvement before stopping; None/0 -> disabled (train the full schedule,

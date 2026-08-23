@@ -1,0 +1,40 @@
+# D4 — A15 recipe + LAYER-WISE LR DECAY (LLRD) on the ViT-B backbone.
+# DEPLOYMENT experiment, NOT a paper run. Rung 3 of the deployment ladder, applied
+# to the ORIGINAL backbone (ViT-B). Run THIS one if D3 (ViT-L) does NOT beat A15,
+# i.e. LLRD is tried on the current proposed backbone.
+#
+# Identical to A15 EXCEPT `layer_decay: 0.75` — the only change. LLRD gives earlier
+# backbone layers exponentially smaller LRs (they carry generic features that
+# transfer well) and the heads the full lr; the standard recipe for fine-tuning a
+# pretrained ViT without disturbing its low-level features. Portable: layer_decay
+# reads the block count from the backbone, so the same knob works on ViT-B or ViT-L.
+run_id: D4
+name: a15_llrd
+priority: optional
+description: 'DEPLOYMENT ONLY (not a paper run): A15 recipe (ViT-B) + layer-wise LR decay 0.75. Rung 3 of the deployment ladder on the original backbone.'
+model_family: dino
+backbone: dinov3           # same as A15 (ViT-B/16)
+context_levels: 3
+attention_depth: 1
+unfreeze_blocks: -1        # full fine-tune (LLRD needs an unfrozen backbone)
+hslm: true
+loss: ce
+sampler: random
+family_weight: 3.0
+genus_weight: 2.0
+species_weight: 1.0
+epochs: 60
+warmup_epochs: 3
+batch_size: 32             # A15 protocol; ViT-B fits at 32 easily
+lr: 0.00001               # same base lr as A15 (1e-5); LLRD decays it per depth
+layer_decay: 0.75         # <- the only change vs A15. earlier layers get smaller lr
+seeds:
+- 0
+- 1
+- 2
+
+# NOTE: layer_decay is a DINO-family, unfrozen-backbone knob (build/loop gate on it).
+# base_lr stays 1e-5 so the HEADS train at A15's validated lr and only the backbone
+# layers are damped; if the loss is under-moving early, 0.65 damps less aggressively
+# (higher effective backbone lr), 0.9 damps more. One change at a time — tune decay
+# only after seeing this run, don't also move base_lr.
