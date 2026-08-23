@@ -1,0 +1,61 @@
+# D3 — A15 recipe on a BIGGER backbone (DINOv3 ViT-L/16, ~300M). DEPLOYMENT
+# experiment, NOT a paper run. The paper's proposed model (A15) uses DINOv3
+# ViT-B/16 (~86M) and matches the ~1B MATANet (C08) at ~12x fewer backbone params
+# — that parameter-efficiency claim is the paper's story and does NOT change.
+#
+# This run only asks a deployment question: now that the L40S (48GB) can fine-tune
+# a larger backbone (the 8-24GB benchmark GPUs could not), does ViT-L buy the
+# actual reef-monitoring deployment any accuracy over ViT-B? Expectation is
+# tempered: the project's own finding is that fine-tuning washes out backbone
+# differences (dinov2 vs dinov3 tie unfrozen), and ~50k crops is smallish for a
+# 300M backbone (tail overfitting risk). Try it because the GPU is free, not
+# because a win is expected.
+#
+# Identical to A15 EXCEPT `backbone: dinov3_large`. embed_dim (1024 for ViT-L) is
+# read from the backbone automatically, so MCEAM/head size themselves.
+#
+# DEPLOYMENT EXPERIMENT LADDER (one change per rung; each branches off the current
+# best; keep every rung as a separate tracked experiment):
+#   1. A15         : ViT-B, 1e-5, flat LR                 (baseline / proposed)
+#   2. D3 (THIS)   : + ViT-L backbone (only change)       <- run first
+#   3. +LLRD       : add layer-wise LR decay to the WINNER of {A15, D3}
+#   4. bigger bb   : ViT-H+ (~840M), only if size is trending as helpful
+# Keep LR at 1e-5 for D3 (A15's validated full-FT LR). Watch the first 2-3 epochs'
+# loss: if unstable/spiking, ViT-L wants a cooler LR (5e-6) — that becomes its own
+# rung, one change at a time. Do NOT stack LLRD + bigger-backbone + LR at once.
+run_id: D3
+name: a15_dinov3_large
+priority: optional
+description: 'DEPLOYMENT ONLY (not a paper run): A15 recipe (HSLM + plain CE, full fine-tune, lr 1e-5) on DINOv3 ViT-L/16 instead of ViT-B/16.'
+model_family: dino
+backbone: dinov3_large     # <- the only change vs A15 (ViT-L/16 ~300M, embed 1024)
+context_levels: 3
+attention_depth: 1
+unfreeze_blocks: -1        # -1 = FULL fine-tune at any depth. A15 uses 12 (==ViT-B's
+                           # block count); ViT-L has 24, so a literal 12 here would
+                           # unfreeze only half. -1 unfreezes the whole backbone,
+                           # making this the true A15 full-FT recipe on ViT-L.
+hslm: true                 # same as A15
+loss: ce                   # same as A15 (plain-CE species term)
+sampler: random
+family_weight: 3.0
+genus_weight: 2.0
+species_weight: 1.0
+epochs: 60
+warmup_epochs: 3
+# A15 ran batch 32 in ~14 GB on a 24 GB card. ViT-L is ~3.5x the backbone, so on
+# the 48 GB L40S start at batch 16; if it OOMs at full fine-tune, drop to 8 (record
+# the departure). This is a deployment run so a batch change is fine — it does not
+# affect any paper number.
+batch_size: 16
+lr: 0.00001                # same as A15 (1e-5)
+seeds:
+- 0
+- 1
+- 2
+
+# NOTE: DINOv3 ViT-L/16 unfreeze path. backbone._BLOCK_PATHS already covers the
+# DINOv3 layouts; unfreeze_blocks(12)==total triggers the FULL-unfreeze branch, so
+# the whole backbone trains (same semantics as A11/A15). If ViT-L exposes a
+# different block count than 12, unfreeze_blocks raises rather than silently
+# no-opping — so a mismatch fails loudly instead of running a partial fine-tune.

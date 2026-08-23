@@ -158,9 +158,11 @@ class RunConfig:
         if self.attention_depth <= 0:
             raise ValueError(f"{path}: attention_depth={self.attention_depth} "
                              "must be > 0 (0 silently disables all context)")
-        if self.unfreeze_blocks < 0:
+        # -1 is the "full fine-tune, any depth" sentinel (resolves to the backbone's
+        # real block count in ViTBackbone.unfreeze_blocks); otherwise it's a count.
+        if self.unfreeze_blocks < -1:
             raise ValueError(f"{path}: unfreeze_blocks={self.unfreeze_blocks} "
-                             "must be >= 0")
+                             "must be >= 0 (or -1 for full fine-tune)")
         if self.epochs <= 0 or self.batch_size <= 0 or self.lr <= 0:
             raise ValueError(f"{path}: epochs/batch_size/lr must be positive")
         if self.warmup_epochs >= self.epochs:

@@ -54,7 +54,8 @@ class Classifier(nn.Module):
             pretrained_model_name=BACKBONES[cfg.backbone], freeze=True,
             attn_implementation=attn_implementation,
         )
-        if cfg.unfreeze_blocks > 0:
+        # >0 = unfreeze last N; -1 = full fine-tune (any depth). 0 = fully frozen.
+        if cfg.unfreeze_blocks != 0:
             self.backbone.unfreeze_blocks(cfg.unfreeze_blocks)
 
         # Take the embedding width from the ACTUAL backbone, not the hardcoded

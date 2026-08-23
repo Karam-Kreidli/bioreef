@@ -20,9 +20,15 @@ from transformers import AutoModel
 logger = logging.getLogger("bioreef.model.backbone")
 
 # Backbone presets for the ablation panel. `name` -> HuggingFace model id.
+# The panel uses dinov3 (ViT-B/16); dinov2 (ViT-B/14) is the backbone-generation
+# ablation. dinov3_large (ViT-L/16, ~300M, embed 1024) is a DEPLOYMENT-only
+# experiment (not a paper run) — the L40S can fine-tune it where the benchmark GPUs
+# could not. embed_dim is read from the backbone (build.py), so a bigger backbone
+# sizes MCEAM/head automatically. All are gated HF repos (need the HF token).
 BACKBONES = {
     "dinov3": "facebook/dinov3-vitb16-pretrain-lvd1689m",
     "dinov2": "facebook/dinov2-base",
+    "dinov3_large": "facebook/dinov3-vitl16-pretrain-lvd1689m",
 }
 
 
@@ -115,7 +121,13 @@ class ViTBackbone(nn.Module):
 
     def unfreeze_blocks(self, n: int = 2):
         """Domain adaptation: unfreeze the final N transformer blocks (+ final
-        layer-norm). Optional last-N-block path mentioned in the paper (4.1)."""
+        layer-norm). Optional last-N-block path mentioned in the paper (4.1).
+
+        n = -1 means FULL fine-tune regardless of the block count — use this for a
+        full-FT recipe on a backbone whose depth may differ (e.g. ViT-L has 24
+        blocks, ViT-B has 12). Passing a hardcoded 12 on a 24-block model would
+        silently unfreeze only the last half — a partial FT wearing a full-FT
+        config. -1 resolves to the model's real total so the recipe is portable."""
         blocks = self._find_blocks()
         if blocks is None:
             raise RuntimeError(
@@ -126,6 +138,8 @@ class ViTBackbone(nn.Module):
             )
 
         total = len(blocks)
+        if n == -1:                      # full fine-tune, any depth
+            n = total
         if not 0 < n <= total:
             raise ValueError(f"unfreeze_blocks: n={n} out of range for {total} blocks")
 
