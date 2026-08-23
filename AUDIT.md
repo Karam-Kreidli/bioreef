@@ -7,9 +7,17 @@ recomputed, result provenance checked, and all **71 stored result files**
 sanity-checked.
 
 **Clean bill on the basics:** no Python syntax errors, all modules compile, all run
-YAMLs parse, the 71 metric files have no NaNs/infinities/impossible values/broken
-taxonomy ordering, and the test suite reports 20/20 — but see #21 (some are false
-passes on a clean checkout).
+YAMLs parse, the metric files have no NaNs/infinities/impossible values/broken
+taxonomy ordering. The audit was done at 71 result files / 20 tests; the panel is now
+COMPLETE (74 runs = 24 configs × 3 seeds incl. all 3 C08 seeds) and the suite is
+**25 tests passing** (#21 added real synthetic-fixture split tests).
+
+**Progress (2026-08-23):** the large majority of findings are fixed and committed to
+`origin/main` (Karam-Kreidli/bioreef) in themed batches — DDP removal, provenance/
+config-validation, data-integrity guards, protocol constants, tests, docs, and the
+LLRD deployment feature. Remaining open items are tagged 🔧/💤/🔍 below; the big ones
+are the MATANet-bridge cluster (#59-#69, deferred until after C08 — now done, so
+unblocked) and a few VM-only regen tasks (#3 split CSVs, #86 stats, A7 re-run).
 
 This file is the single reference for the semantic/scientific/reproducibility
 findings. Status legend:
@@ -133,7 +141,7 @@ Removed `scripts/train.py` + `scripts/test.py`; fixed stale refs in `run_config.
 | 17 | A11 comment says patch-embed stays frozen; code unfreezes EVERYTHING (code is right) | ✅ DONE (comment corrected) |
 | 18 | A16 says DINOv2-base is ViT-B/16; it's patch-14 (256 patches vs DINOv3's 196) → call it a backbone comparison | ✅ DONE (comment corrected) |
 | 19 | C06 vs C09 is not a clean frozen-vs-FT comparison (many diffs); the clean one is C09→A9→A10→A11 | ✅ DONE (comment corrected) |
-| 20 | C09/MCEAM context-levels comment miscounts (3 = social/habitat/full_frame; ROI is the query) | ✅ DONE (C09 comment fixed; MCEAM docstring still TODO) |
+| 20 | C09/MCEAM context-levels comment miscounts (3 = social/habitat/full_frame; ROI is the query) | ✅ DONE | C09 config comment fixed; MCEAM docstring also corrected (see #48/#49). |
 | 52 | Taxonomy corrections buried in `split.py` → move to versioned `taxonomy_corrections.csv` | ✅ DONE | Created `configs/taxonomy_corrections.csv` (type,key,corrected,reason); split.py loads it (in-code defaults as fallback). |
 | 53 | Placeholder filter narrow (misses `sp.`/`spp.`/`cf.`/`aff.`) | ✅ DONE (verified) | Filter broadened to sp/sp./spp/spp./cf./aff./indet.; **verified split still yields 321 (no legit class dropped).** |
 | 54 | Taxonomic completeness enforced only for HSLM, not flat baselines → validate globally | ✅ DONE | `split_dataset` now hard-errors if any benchmark species lacks genus/family — applies to EVERY model, not just HSLM. |
@@ -149,10 +157,15 @@ Removed `scripts/train.py` + `scripts/test.py`; fixed stale refs in `run_config.
 | 82 | Your "Hierarchical Distance" isn't literal graph-hop distance | ✅ DONE (doc) | hd.py docstring: defined as an ordinal severity 0/1/2/3, explicitly not edge-count; distinct from MATANet's 0/2/4/6. |
 | 83 | Training marginalization and evaluation genus/family accuracy use different mechanisms | ✅ DONE (doc) | metrics.py docstring: genus/family accuracy = taxonomy of top-1 predicted species (uniform across models), not marginalized argmax. |
 | 84 | `species_accuracy` duplicates Top-1 | ✅ DONE (doc) | Commented as == top1/micro; do not report separately. |
-| 85 | `group_sizes` (114/149/58 = 321) reported alongside test group accuracy over <321 present classes | 🔧 TODO (label; #2) |
-| 86 | Regenerate benchmark stats from code (head/med/tail = 114/149/58, not the draft's 112/161/48) | 🔧 TODO |
+| 85 | `group_sizes` (114/149/58 = 321) reported alongside test group accuracy over <321 present classes | 🔧 TODO (paper) | Label at write-time as "group sizes over the 321 defined; group accuracy over the 313 present in test" — ties to the #2 "321 defined / 313 evaluable" disclosure. No code change; it's a table caption in the paper. |
+| 86 | Regenerate benchmark stats from code (head/med/tail = 114/149/58, not the draft's 112/161/48) | 🔧 TODO (paper) | Panel now complete → pull ALL paper-table numbers (species/family/genus counts, crop totals, head/med/tail sizes) from the final RESULTS.md / a `_log_split_summary` dump, NOT the stale draft. Resolves the §5.3-5.6 [VERIFY] tags in PAPER_FRAMING. |
 
-## MATANet / C08 bridge (touch ONLY after C08 seed runs finish)
+## MATANet / C08 bridge — now UNBLOCKED (all 3 C08 seeds done 2026-08-23)
+
+These were deferred so edits couldn't disturb a running C08 seed. C08 is now
+complete, so #59-#69 are safe to fix — do them before the fresh-repo upload, as a
+hardening pass on the bridge (they don't change the completed C08 numbers, which
+already passed the ingest's name-match + coverage checks).
 
 | # | Finding | Status |
 |---|---|---|
@@ -218,14 +231,40 @@ No other stored result is affected: the #37/#38/#23 guards only fire on failure
 loaded values, and #76's default only touches ad-hoc one-offs (all configs set
 `sampler` explicitly).
 
-## Recommended execution order
+## Status snapshot (2026-08-23)
 
-1. 🔍 **#55 — data integrity** (verify disk files are source frames, not crops). Highest stakes; fast.
-2. 🔧 **#16/#2 doc consistency** — A15=proposed, C09=frozen baseline, "321 defined/313 evaluable"; strip post-hoc narration.
-3. 🔧 **Latent code fixes** — #23, #37, #38, #24, #25, #9, #76.
-4. 🔧 **Reproducibility** — #3, #4, #10–#14, #71–#73 (the benchmark co-star).
-5. 🔧 **MATANet #59–#69** — AFTER C08 seeds finish.
-6. 🔧 **Tests #21** + regenerate MANIFEST/#15/#86 from code.
-7. 💤 Doc-only + deferred as a final polish pass before upload.
+**DONE + committed** (~55 findings): all DDP (#5-8/#34-36/#79-80, by deletion),
+provenance/config (#10-14/#24/#25), data-integrity guards (#23/#26-29/#58),
+sampler+loop safety (#9-code/#37/#38/#40/#76), protocol constants (#31/#32/#33),
+model/eval (#50/#81), taxonomy (#52/#53/#54), tests (#21), MATANet wording (#64/#65),
+C08 complete (#70), and all doc-only wording fixes (#15/#17-20/#30/#43/#48/#49/#74/
+#75/#77/#82/#83/#84). Plus the LLRD deployment feature (D4/D5) on top.
 
-All fixes accumulate in the working tree — **no piecemeal commits** (single final commit into the new repo, per standing constraint).
+**COMMIT POLICY CHANGED (2026-08-23):** the old "single final commit" rule is
+superseded — work is committed to `origin/main` in THEMED BATCHES and pushed.
+(A separate clean public repo is a later, distinct step, done once results are final.)
+
+**STILL OPEN:**
+- 🔧 **MATANet bridge #59-#63/#66-#69** — now unblocked (C08 done); hardening pass before upload.
+- 🔧 **Paper-write-time / VM regen:** #3 (regen splits/*.csv), #86/#85 (regen stats + labels from final RESULTS.md), #71/#72 (pin deps + model revisions), #73 (split benchmark.yaml from local paths).
+- ⚠️ **A7 re-run** (the ONE genuine re-run — see RE-RUN POLICY above). VM task.
+- 💤 **Deferred / low-severity:** #4, #22, #39, #41/#42 (cache off), #44/#45, #46/#47 (analysis/ablation), #56/#57, #78.
+
+## Commit log (this working repo, Karam-Kreidli/bioreef, branch main)
+
+Audit + deployment work landed as themed commits (newest first):
+- `Docs: final 3-seed panel conclusions + C08 complete` (PAPER_FRAMING §12, AUDIT)
+- `Add portable layer-wise LR decay (LLRD)` (factory/loop/run_config + D4/D5)
+- `Add D3 deployment experiment: A15 recipe on DINOv3 ViT-L/16`
+- `Docs + config alignment: A15 proposed, C09 frozen baseline; MATANet wording`
+- `Wire protocol constants into dataset; run_config cleanup`
+- `Centralize protocol constants; add training-loop guards; model/eval fixes`
+- `Harden split/data integrity + broaden placeholder + externalize taxonomy fixes`
+- `Add provenance fingerprinting + config validation`
+- `Remove unused DDP training path`
+- `Track existing helper scripts, MATANet runner, and current results snapshot`
+- (VM side) `C08 results` + `A7 updated run` — the completed-run commits.
+
+NOTE: some commits made on the Windows machine may be **local-ahead of origin** until
+`git push origin main` is run there (the push is user-initiated). Verify with
+`git status` / `git log --oneline origin/main` before assuming everything is on GitHub.
