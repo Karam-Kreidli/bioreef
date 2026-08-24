@@ -1,0 +1,38 @@
+# D3a — LR-sweep rung on the ViT-L backbone. DEPLOYMENT experiment, NOT a paper run.
+#
+# WHY THIS EXISTS: D3 (ViT-L at A15's lr=1e-5) UNDERPERFORMED A15 — seed 0:
+# top1 .774 vs A15 .842, macro .561 vs .690, HD .465 vs .291. The suspected cause
+# is the learning rate: A15's 1e-5 was tuned for ViT-B (12 blocks, embed 768, ~86M).
+# ViT-L is deeper AND wider (24 blocks, embed 1024, ~300M) and a bigger pretrained
+# backbone generally wants a GENTLER peak LR under full fine-tune, or it drifts off
+# the good pretrained basin (which is what the degraded macro/HD look like).
+#
+# So before adding LLRD (D5), we first find a sane plain full-FT LR for ViT-L.
+# This is the "one change at a time" rule: LLRD is a refinement ON TOP of a working
+# base LR; running it on a mis-tuned LR would confound the two effects.
+#
+# THIS RUNG: identical to D3 EXCEPT lr 1e-5 -> 5e-6 (half). Paired with D3b (2e-6)
+# to bracket the "gentler" hypothesis. seed 0 ONLY for the sweep (cheap, directly
+# comparable to the D3 seed-0 we already have). Whichever LR wins the sweep becomes
+# the base for the ViT-L LLRD run and, if it beats A15, gets its remaining seeds.
+run_id: D3a
+name: a15_dinov3_large_lr5e6
+priority: optional
+description: 'DEPLOYMENT ONLY (not a paper run): D3 recipe (A15 on DINOv3 ViT-L/16, full fine-tune) at a cooler lr 5e-6 instead of 1e-5. LR-sweep rung.'
+model_family: dino
+backbone: dinov3_large     # same as D3 (ViT-L/16 ~300M, embed 1024)
+context_levels: 3
+attention_depth: 1
+unfreeze_blocks: -1        # -1 = FULL fine-tune (whole ViT-L, 24 blocks). Same as D3.
+hslm: true                 # same as A15/D3
+loss: ce                   # same as A15/D3 (plain-CE species term)
+sampler: random
+family_weight: 3.0
+genus_weight: 2.0
+species_weight: 1.0
+epochs: 60
+warmup_epochs: 3
+batch_size: 16             # same as D3 (fits ViT-L full-FT on the 48 GB L40S)
+lr: 0.000005               # <- the ONLY change vs D3: 5e-6 (half of A15's 1e-5)
+seeds:
+- 0                        # sweep = seed 0 only; add 1,2 later if this LR wins

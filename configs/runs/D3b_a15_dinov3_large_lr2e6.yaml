@@ -1,0 +1,36 @@
+# D3b — LR-sweep rung on the ViT-L backbone. DEPLOYMENT experiment, NOT a paper run.
+#
+# WHY THIS EXISTS: companion to D3a. D3 (ViT-L at lr=1e-5) underperformed A15;
+# the suspected cause is too-hot LR for the larger backbone (see D3a header for the
+# full seed-0 numbers and reasoning). D3a tries 5e-6 (half); THIS rung tries 2e-6
+# (~5x gentler than D3). Together they bracket the "bigger backbone wants a gentler
+# peak LR" hypothesis:
+#   D3  = 1e-5 (have it, underperformed)
+#   D3a = 5e-6 (half)
+#   D3b = 2e-6 (THIS, ~5x gentler)
+# If the trend is monotonic (2e-6 > 5e-6 > 1e-5) we may still be too hot and can go
+# finer; if it peaks at 5e-6, we have the ViT-L optimum. Only AFTER this do we add
+# LLRD (D5) on the winning LR — one change at a time.
+#
+# THIS RUNG: identical to D3 EXCEPT lr 1e-5 -> 2e-6. seed 0 ONLY (sweep).
+run_id: D3b
+name: a15_dinov3_large_lr2e6
+priority: optional
+description: 'DEPLOYMENT ONLY (not a paper run): D3 recipe (A15 on DINOv3 ViT-L/16, full fine-tune) at a cooler lr 2e-6 instead of 1e-5. LR-sweep rung, pairs with D3a (5e-6).'
+model_family: dino
+backbone: dinov3_large     # same as D3 (ViT-L/16 ~300M, embed 1024)
+context_levels: 3
+attention_depth: 1
+unfreeze_blocks: -1        # -1 = FULL fine-tune (whole ViT-L, 24 blocks). Same as D3.
+hslm: true                 # same as A15/D3
+loss: ce                   # same as A15/D3 (plain-CE species term)
+sampler: random
+family_weight: 3.0
+genus_weight: 2.0
+species_weight: 1.0
+epochs: 60
+warmup_epochs: 3
+batch_size: 16             # same as D3 (fits ViT-L full-FT on the 48 GB L40S)
+lr: 0.000002               # <- the ONLY change vs D3: 2e-6 (~5x gentler than 1e-5)
+seeds:
+- 0                        # sweep = seed 0 only; add 1,2 later if this LR wins
