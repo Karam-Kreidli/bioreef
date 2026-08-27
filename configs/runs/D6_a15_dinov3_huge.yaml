@@ -1,0 +1,46 @@
+# D6 — A15 recipe on the BIGGEST backbone yet (DINOv3 ViT-H+/16, ~840M, embed 1280,
+# 32 blocks). DEPLOYMENT experiment, NOT a paper run. The next rung after ViT-L
+# (D3a) beat ViT-B: size is trending UP, so we go bigger.
+#
+# LADDER SO FAR (deployment, 1 seed each, "one change per rung on the winner"):
+#   A15  : ViT-B/16 (~86M), lr 1e-5, flat LR   -> top1 .842 / HD .291 / tail .444 (3-seed)
+#   D3   : ViT-L/16 (~300M), lr 1e-5           -> top1 .774 / HD .465 / tail .265  (too-hot LR)
+#   D3a  : ViT-L/16,        lr 5e-6 (winner)   -> top1 .859 / HD .242 / tail .524  (panel best)
+#   D3b  : ViT-L/16,        lr 2e-6            -> top1 .852 / HD .257 / tail .362  (over-cooled)
+#   D4   : ViT-B + LLRD                        -> WORSE than A15 (LLRD didn't help ViT-B)
+#   D6   : THIS — ViT-H+/16 (~840M), lr 5e-6   <- ONLY change vs D3a = bigger backbone
+#
+# WHY 5e-6 (not lower): D3a proved 5e-6 is the ViT-L optimum; ViT-L->ViT-H+ is the
+# single change under test, so hold LR at the last-known-good 5e-6. The "bigger
+# backbone wants an even gentler LR" trend (1e-5 for ViT-B -> 5e-6 for ViT-L) may
+# well continue, so IF D6 underperforms D3a the way D3 underperformed A15, that's
+# the cue to sweep DOWN (2.5e-6) — a follow-up rung, one change at a time. Do NOT
+# pre-emptively cool AND enlarge in the same run.
+#
+# BATCH SIZE — this WILL be tight. ViT-L full-FT used ~35/46 GB at batch 32 on the
+# L40S. ViT-H+ is ~2.8x the backbone params, so batch 32 will OOM. Start at 8. If it
+# fits with headroom, try 16 (record the departure — batch doesn't affect any paper
+# number, this is deployment). If batch 8 still OOMs, enable gradient checkpointing
+# (GRAD_CKPT=1 in the run wrapper) before dropping to 4. A smaller batch slightly
+# changes the effective LR/BN stats but 5e-6 is gentle, so it should be stable.
+run_id: D6
+name: a15_dinov3_huge
+priority: optional
+description: 'DEPLOYMENT ONLY (not a paper run): A15 recipe (HSLM + plain CE, full fine-tune) on DINOv3 ViT-H+/16 (~840M) at lr 5e-6 (the ViT-L optimum from D3a). Next rung after ViT-L trended up.'
+model_family: dino
+backbone: dinov3_huge       # <- the only change vs D3a (ViT-H+/16 ~840M, embed 1280, 32 blocks)
+context_levels: 3
+attention_depth: 1
+unfreeze_blocks: -1        # -1 = FULL fine-tune (all 32 blocks). Same recipe as D3/D3a.
+hslm: true                 # same as A15/D3a
+loss: ce                   # same as A15/D3a (plain-CE species term)
+sampler: random
+family_weight: 3.0
+genus_weight: 2.0
+species_weight: 1.0
+epochs: 60
+warmup_epochs: 3
+batch_size: 8              # start small; ~840M full-FT is tight on 48 GB (see header)
+lr: 0.000005               # 5e-6 = the ViT-L optimum (D3a). Hold it: backbone is the change.
+seeds:
+- 0                        # deployment sweep = seed 0 only (not a paper mean)

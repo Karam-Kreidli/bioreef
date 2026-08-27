@@ -29,6 +29,10 @@ BACKBONES = {
     "dinov3": "facebook/dinov3-vitb16-pretrain-lvd1689m",
     "dinov2": "facebook/dinov2-base",
     "dinov3_large": "facebook/dinov3-vitl16-pretrain-lvd1689m",
+    # dinov3_huge (ViT-H+/16, ~840M, embed 1280, 32 blocks) — next DEPLOYMENT rung
+    # after ViT-L trended up (D3a). Same DINOv3 layout as ViT-L, so _BLOCK_PATHS and
+    # the embed_dim auto-read already cover it; unfreeze_blocks(-1) full-FTs all 32.
+    "dinov3_huge": "facebook/dinov3-vith16plus-pretrain-lvd1689m",
 }
 
 
