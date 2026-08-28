@@ -1,0 +1,35 @@
+# D7 — CB-Focal twin of D3a (ViT-L). DEPLOYMENT experiment, NOT a paper run.
+#
+# WHY: the CB-Focal-vs-CE trade-off ran through the whole ablation chain (A12 used
+# HSLM+CB-Focal; A15 dropped CB-Focal for plain CE because at ViT-B the tail gain was
+# within noise while the top1/HD cost was real). Now the backbone is much bigger, so
+# re-open that trade-off: does CB-Focal's tail re-weighting earn its place on ViT-L,
+# where there's more capacity to fit the rare classes?
+#
+# THIS = D3a with ONE change: loss ce -> cbfocal (== A12's recipe on ViT-L @ 5e-6).
+# HSLM stays on, so this swaps only the species term (CE -> CB-Focal, Cui 2019:
+# focal gamma 2.0 + class-balanced beta 0.9999, both from protocol.py). Everything
+# else identical to D3a: ViT-L/16, full-FT, lr 5e-6 (the ViT-L optimum from the sweep),
+# batch 16. Compare vs D3a (top1 .859 / HD .242 / tail .524) — watch the TAIL, that's
+# what CB-Focal is for.
+run_id: D7
+name: dinov3_large_cbfocal
+priority: optional
+description: 'DEPLOYMENT ONLY (not a paper run): D3a recipe (A15 on DINOv3 ViT-L/16, full fine-tune, lr 5e-6) with CB-Focal species loss instead of plain CE. Re-opens the CB-Focal-vs-CE trade-off on a bigger backbone.'
+model_family: dino
+backbone: dinov3_large      # same as D3a (ViT-L/16 ~300M, embed 1024)
+context_levels: 3
+attention_depth: 1
+unfreeze_blocks: -1        # -1 = FULL fine-tune (all 24 blocks). Same as D3a.
+hslm: true                 # same as D3a (hierarchy stays on; only the species term changes)
+loss: cbfocal              # <- the ONLY change vs D3a: CB-Focal instead of CE
+sampler: random
+family_weight: 3.0
+genus_weight: 2.0
+species_weight: 1.0
+epochs: 60
+warmup_epochs: 3
+batch_size: 16             # same as D3a
+lr: 0.000005               # 5e-6 = the ViT-L optimum (D3a). Held so loss is the only change.
+seeds:
+- 0                        # deployment sweep = seed 0 only (not a paper mean)

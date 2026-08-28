@@ -1,0 +1,35 @@
+# D8 — CB-Focal twin of D6 (ViT-H+). DEPLOYMENT experiment, NOT a paper run.
+#
+# WHY: same CB-Focal-vs-CE re-examination as D7 (see its header), but on the biggest
+# backbone (ViT-H+/16, ~840M). Pairs with D6 (the CE version) so the loss comparison
+# is available at both bigger backbones (ViT-L: D3a/D7, ViT-H+: D6/D8).
+#
+# THIS = D6 with ONE change: loss ce -> cbfocal. HSLM stays on; swaps only the species
+# term to CB-Focal (Cui 2019: focal gamma 2.0 + class-balanced beta 0.9999). Everything
+# else identical to D6: ViT-H+/16, full-FT (all 32 blocks via -1), lr 5e-6, batch 8.
+# Compare vs D6 (once D6 lands) — watch the TAIL.
+#
+# BATCH: batch 8, same as D6 (~840M full-FT is tight on the 48 GB L40S). If D6 showed
+# batch 16 fits, use 16 here too for a clean D6-vs-D8 comparison. Grad-checkpoint
+# before dropping below 8. Batch doesn't affect any paper number (deployment run).
+run_id: D8
+name: dinov3_huge_cbfocal
+priority: optional
+description: 'DEPLOYMENT ONLY (not a paper run): D6 recipe (A15 on DINOv3 ViT-H+/16, full fine-tune, lr 5e-6) with CB-Focal species loss instead of plain CE. CB-Focal-vs-CE on the biggest backbone.'
+model_family: dino
+backbone: dinov3_huge       # same as D6 (ViT-H+/16 ~840M, embed 1280, 32 blocks)
+context_levels: 3
+attention_depth: 1
+unfreeze_blocks: -1        # -1 = FULL fine-tune (all 32 blocks). Same as D6.
+hslm: true                 # same as D6 (hierarchy stays on; only the species term changes)
+loss: cbfocal              # <- the ONLY change vs D6: CB-Focal instead of CE
+sampler: random
+family_weight: 3.0
+genus_weight: 2.0
+species_weight: 1.0
+epochs: 60
+warmup_epochs: 3
+batch_size: 8              # same as D6 (see header; match D6's final batch for a clean compare)
+lr: 0.000005               # 5e-6 = the ViT-L optimum (D3a), held for ViT-H+ too (D6's LR)
+seeds:
+- 0                        # deployment sweep = seed 0 only (not a paper mean)
