@@ -1,0 +1,35 @@
+# D6a — cooler-LR fallback for ViT-H+. DEPLOYMENT experiment, NOT a paper run.
+# PRE-STAGED: only run this IF D6 (ViT-H+ @ 5e-6) underperforms D3a (ViT-L @ 5e-6),
+# the same way D3 (ViT-L @ 1e-5) underperformed A15 and needed the sweep down to 5e-6.
+#
+# THE LR TREND: bigger backbone -> gentler optimal LR.
+#   ViT-B (~86M)  optimum 1e-5   (A15)
+#   ViT-L (~300M) optimum 5e-6   (D3a; 1e-5 was too hot -> D3 flopped)
+#   ViT-H+(~840M) ~3x ViT-L, so if 5e-6 (D6) is too hot, 2.5e-6 (THIS) is the next
+#                 guess along the same halving trend.
+#
+# THIS = D6 with ONE change: lr 5e-6 -> 2.5e-6. Everything else identical (ViT-H+,
+# full-FT all 32 blocks, HSLM+CE, batch 8). Do NOT run pre-emptively — D6 at 5e-6 is
+# the baseline probe; this is its fallback rung, one change at a time. If D6 already
+# beats D3a, skip this entirely.
+run_id: D6a
+name: dinov3_huge_lr2p5e6
+priority: optional
+description: 'DEPLOYMENT ONLY (not a paper run): D6 recipe (A15 on DINOv3 ViT-H+/16, full fine-tune) at a cooler lr 2.5e-6 instead of 5e-6. FALLBACK rung — run only if D6 underperforms D3a.'
+model_family: dino
+backbone: dinov3_huge       # same as D6 (ViT-H+/16 ~840M, embed 1280, 32 blocks)
+context_levels: 3
+attention_depth: 1
+unfreeze_blocks: -1        # -1 = FULL fine-tune (all 32 blocks). Same as D6.
+hslm: true                 # same as D6
+loss: ce                   # same as D6 (plain-CE species term; this rung sweeps LR, not loss)
+sampler: random
+family_weight: 3.0
+genus_weight: 2.0
+species_weight: 1.0
+epochs: 60
+warmup_epochs: 3
+batch_size: 8              # same as D6
+lr: 0.0000025              # <- the ONLY change vs D6: 2.5e-6 (half of D6's 5e-6)
+seeds:
+- 0                        # deployment sweep = seed 0 only (not a paper mean)
